@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import MuteButton from "./MuteButton";
+import { Link } from "react-router-dom";
 
 const Menu = () => {
   const audioRef = useRef(null);
@@ -50,10 +51,12 @@ const Menu = () => {
           By : 223117102 - Rafael Jove, 223117103 - Raoul Stanley Kho, 223117104
           - Richard Gunawan
         </div>
-        <button className="w-80 kingdom-btn">
+        <Link to="/arena" className="w-80 kingdom-btn text-center">
           Play 2 Player (Multiplayer)
-        </button>
-        <button className="w-80 kingdom-btn">Play vs AI</button>
+        </Link>
+        <Link to="/arena" className="w-80 kingdom-btn text-center">
+          Play vs AI
+        </Link>
       </div>
 
       {/* Mute Button */}

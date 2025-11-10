@@ -30,8 +30,12 @@ const Arena = () => {
         <source src="/medieval-kingdom-loop-366815.mp3" type="audio/mpeg" />
       </audio>
 
+      {/* Background Image */}
+      <div className="arena-background"></div>
+
+      {/* Game Board */}
       <img
-        src="../../public/Assets BGA/Leaders_Board.png"
+        src="/Assets BGA/Leaders_Board.png"
         alt="Leaders Game Board"
         className="game-board"
       />

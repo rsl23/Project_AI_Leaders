@@ -3,17 +3,44 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 20px;
-  width: 100%;
+  padding: 0;
+  width: 100vw;
   height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.arena-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("/bg-arena.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 0;
+}
+
+.arena-background::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1;
 }
 
 .game-board {
-  max-width: 90%;
-  max-height: 90vh;
+  max-width: 95%;
+  max-height: 95vh;
   object-fit: contain;
   border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 2;
 }
 
 /* Menu Kingdom Theme Styles */
