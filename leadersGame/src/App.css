@@ -217,3 +217,207 @@
   backdrop-filter: blur(5px);
   border-radius: 4px;
 }
+
+/* Card Deck Styles */
+.card-deck-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+}
+
+/* Deck Stack (Tumpukan Kartu) */
+.deck-stack {
+  position: relative;
+  width: 120px;
+  height: 180px;
+}
+
+.deck-card {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(145deg, #2c1810, #1a0f08);
+  border: 3px solid #8b4513;
+  border-radius: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deck-layer-1 {
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+}
+
+.deck-layer-2 {
+  bottom: 4px;
+  left: -4px;
+  z-index: 2;
+  opacity: 0.8;
+}
+
+.deck-layer-3 {
+  bottom: 8px;
+  left: -8px;
+  z-index: 1;
+  opacity: 0.6;
+}
+
+.deck-count {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #d4af37;
+  text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+}
+
+/* Drawn Cards */
+.drawn-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  align-items: center;
+}
+
+.card-item {
+  width: 110px;
+  height: 205px;
+  overflow: hidden;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  animation: cardSlideIn 0.5s ease-out forwards;
+  opacity: 0;
+  transform: translateY(100px);
+  cursor: pointer;
+}
+
+.card-item:hover {
+  transform: translateY(-10px) scale(1.05);
+  box-shadow: 0 12px 24px rgba(212, 175, 55, 0.4);
+}
+
+.card-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@keyframes cardSlideIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tailwind Animation Helper */
+.animate-slideIn {
+  opacity: 0;
+  transform: translateY(100px);
+  animation: cardSlideIn 0.5s ease-out forwards;
+}
+
+/* Game Info Panel Styles */
+.game-info-panel {
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(212, 175, 55, 0.5);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 250px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+.info-section {
+  margin-bottom: 20px;
+}
+
+.info-section:last-child {
+  margin-bottom: 0;
+}
+
+.info-title {
+  color: #d4af37;
+  font-size: 1.3rem;
+  font-weight: bold;
+  margin-bottom: 12px;
+  text-align: center;
+  text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+  letter-spacing: 1px;
+}
+
+.player-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(212, 175, 55, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.stat-label {
+  color: #d4af37;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.stat-value {
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 0.95rem;
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(212, 175, 55, 0.5),
+    transparent
+  );
+  margin: 15px 0;
+}
+
+.turn-indicator {
+  text-align: center;
+}
+
+.turn-number {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+  margin-bottom: 8px;
+}
+
+.current-player {
+  color: #d4af37;
+  font-size: 1rem;
+  font-weight: 600;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* Side Panels Positioning */
+.card-panel-left {
+  position: absolute;
+  left: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+}
+
+.info-panel-right {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+}

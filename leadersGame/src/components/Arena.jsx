@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import MuteButton from "./MuteButton";
+import CardDeck from "./CardDeck";
+import GameInfo from "./GameInfo";
 
 const Arena = () => {
   const audioRef = useRef(null);
@@ -24,26 +26,30 @@ const Arena = () => {
   };
 
   return (
-    <div className="arena-container flex" onClick={handleUserInteraction}>
+    <div className="arena-container" onClick={handleUserInteraction}>
       {/* Background Music */}
       <audio ref={audioRef} loop>
         <source src="/medieval-kingdom-loop-366815.mp3" type="audio/mpeg" />
       </audio>
 
       {/* Background Image */}
-      <div className="arena-background justify-between items-center flex">
-        {/* Tempat Card */}
-        <div className=""></div>
-        {/* Game Board */}
-        <div className="">
-          <img
-            src="/Assets BGA/Leaders_Board.png"
-            alt="Leaders Game Board"
-            className="game-board"
-          />
-        </div>
-        {/* Info Seputar Game */}
-        <div className=""></div>
+      <div className="arena-background"></div>
+
+      {/* Tempat Card - Kiri Tengah */}
+      <div className="absolute left-8 top-1/2 -translate-y-1/2 z-10">
+        <CardDeck />
+      </div>
+
+      {/* Game Board - Tengah */}
+      <img
+        src="/Assets/Leaders_Board.png"
+        alt="Leaders Game Board"
+        className="game-board"
+      />
+
+      {/* Info Seputar Game - Kanan Tengah */}
+      <div className="absolute right-8 top-1/2 -translate-y-1/2 z-10">
+        <GameInfo />
       </div>
 
       {/* Mute Button */}

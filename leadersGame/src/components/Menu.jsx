@@ -46,7 +46,13 @@ const Menu = () => {
 
       {/* Content */}
       <div className="relative z-20 text-white flex flex-col space-y-6 items-center">
-        <div className="royal-title">LEADERS</div>
+        <div className="royal-title">
+          <img
+            src="/Leaders_logo.png"
+            alt="Leaders"
+            style={{ width: "400px" }}
+          />
+        </div>
         <div className="royal-subtitle">
           By : 223117102 - Rafael Jove, 223117103 - Raoul Stanley Kho, 223117104
           - Richard Gunawan
