@@ -24,21 +24,27 @@ const Arena = () => {
   };
 
   return (
-    <div className="arena-container" onClick={handleUserInteraction}>
+    <div className="arena-container flex" onClick={handleUserInteraction}>
       {/* Background Music */}
       <audio ref={audioRef} loop>
         <source src="/medieval-kingdom-loop-366815.mp3" type="audio/mpeg" />
       </audio>
 
       {/* Background Image */}
-      <div className="arena-background"></div>
-
-      {/* Game Board */}
-      <img
-        src="/Assets BGA/Leaders_Board.png"
-        alt="Leaders Game Board"
-        className="game-board"
-      />
+      <div className="arena-background justify-between items-center flex">
+        {/* Tempat Card */}
+        <div className=""></div>
+        {/* Game Board */}
+        <div className="">
+          <img
+            src="/Assets BGA/Leaders_Board.png"
+            alt="Leaders Game Board"
+            className="game-board"
+          />
+        </div>
+        {/* Info Seputar Game */}
+        <div className=""></div>
+      </div>
 
       {/* Mute Button */}
       <MuteButton audioRef={audioRef} />
