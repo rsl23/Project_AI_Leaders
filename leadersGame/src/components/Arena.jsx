@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import MuteButton from "./MuteButton";
 import CardDeck from "./CardDeck";
 import GameInfo from "./GameInfo";
+import GameBoard from "./GameBoard";
 
 const Arena = () => {
   const audioRef = useRef(null);
@@ -40,12 +41,8 @@ const Arena = () => {
         <CardDeck />
       </div>
 
-      {/* Game Board - Tengah */}
-      <img
-        src="/Assets/Leaders_Board.png"
-        alt="Leaders Game Board"
-        className="game-board"
-      />
+      {/* Game Board dengan 37 Lingkaran - Tengah */}
+      <GameBoard />
 
       {/* Info Seputar Game - Kanan Tengah */}
       <div className="absolute right-8 top-1/2 -translate-y-1/2 z-10">
