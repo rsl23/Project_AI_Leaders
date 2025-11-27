@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 
-const CardDeck = () => {
+const CardDeck = ({ onCardSelect, selectedCard }) => {
   const [drawnCards, setDrawnCards] = useState([]);
   const [deckCount, setDeckCount] = useState(8);
 
@@ -48,7 +48,33 @@ const CardDeck = () => {
         {drawnCards.map((card, index) => (
           <div
             key={index}
-            className="w-32 h-60 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_12px_24px_rgba(212,175,55,0.4)] cursor-pointer animate-slideIn"
+            onClick={() => {
+              // Mapping dari nama kartu ke nama character file
+              const cardTypeMap = {
+                acrobate: "Acrobate",
+                assassin: "Assassin",
+                gardeRoyal: "GardeRoyal",
+                geolier: "Geolier",
+                lanceGrappin: "LanceGrappin",
+                oldBear: "VieilOurs",
+                tavernier: "Tavernier",
+                vizir: "Vizir",
+              };
+              const rawType = card.split("/").pop().split("_")[1].split(".")[0];
+              const characterType = cardTypeMap[rawType] || rawType;
+
+              onCardSelect?.({
+                image: card,
+                type: characterType,
+              });
+            }}
+            className={`w-32 h-60 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_12px_24px_rgba(212,175,55,0.4)] cursor-pointer animate-slideIn
+              ${
+                selectedCard?.image === card
+                  ? "ring-4 ring-yellow-400 scale-105"
+                  : ""
+              }
+            `}
             style={{
               animationDelay: `${index * 0.2}s`,
               animationFillMode: "both",
