@@ -1,30 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 
-const CardDeck = ({ onCardSelect, selectedCard }) => {
-  const [drawnCards, setDrawnCards] = useState([]);
-  const [deckCount, setDeckCount] = useState(8);
-
-  const allCards = [
-    "/Composants_2D/Cartes/cartes_acrobate.jpg",
-    "/Composants_2D/Cartes/cartes_assassin.jpg",
-    "/Composants_2D/Cartes/cartes_gardeRoyal.jpg",
-    "/Composants_2D/Cartes/cartes_geolier.jpg",
-    "/Composants_2D/Cartes/cartes_lanceGrappin.jpg",
-    "/Composants_2D/Cartes/cartes_oldBear.jpg",
-    "/Composants_2D/Cartes/cartes_tavernier.jpg",
-    "/Composants_2D/Cartes/cartes_vizir.jpg",
-  ];
-
-  // Draw 3 random cards on mount
-  useEffect(() => {
-    drawInitialCards();
-  }, []);
-
-  const drawInitialCards = () => {
-    const shuffled = [...allCards].sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, 3);
-    setDrawnCards(selected);
-    setDeckCount(allCards.length - 3);
+const CardDeck = ({ availableCards = [], onCardSelect, selectedCard, deckCount = 0 }) => {
+  const cardTypeMap = {
+    acrobate: "Acrobate",
+    assassin: "Assassin",
+    gardeRoyal: "GardeRoyal",
+    geolier: "Geolier",
+    lanceGrappin: "LanceGrappin",
+    oldBear: "VieilOurs",
+    tavernier: "Tavernier",
+    vizir: "Vizir",
   };
 
   return (
@@ -45,48 +30,38 @@ const CardDeck = ({ onCardSelect, selectedCard }) => {
 
       {/* Drawn Cards (3 Kartu yang Keluar) - KANAN */}
       <div className="flex flex-col gap-4 items-center">
-        {drawnCards.map((card, index) => (
-          <div
-            key={index}
-            onClick={() => {
-              // Mapping dari nama kartu ke nama character file
-              const cardTypeMap = {
-                acrobate: "Acrobate",
-                assassin: "Assassin",
-                gardeRoyal: "GardeRoyal",
-                geolier: "Geolier",
-                lanceGrappin: "LanceGrappin",
-                oldBear: "VieilOurs",
-                tavernier: "Tavernier",
-                vizir: "Vizir",
-              };
-              const rawType = card.split("/").pop().split("_")[1].split(".")[0];
-              const characterType = cardTypeMap[rawType] || rawType;
+        {availableCards.map((card, index) => {
+          const rawType = card.image.split("/").pop().split("_")[1].split(".")[0];
+          const characterType = cardTypeMap[rawType] || rawType;
 
-              onCardSelect?.({
-                image: card,
-                type: characterType,
-              });
-            }}
-            className={`w-32 h-60 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_12px_24px_rgba(212,175,55,0.4)] cursor-pointer animate-slideIn
-              ${
-                selectedCard?.image === card
+          return (
+            <div
+              key={index}
+              onClick={() => {
+                onCardSelect?.({
+                  image: card.image,
+                  type: characterType,
+                });
+              }}
+              className={`w-32 h-60 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_12px_24px_rgba(212,175,55,0.4)] cursor-pointer animate-slideIn
+                ${selectedCard?.image === card.image
                   ? "ring-4 ring-yellow-400 scale-105"
                   : ""
-              }
-            `}
-            style={{
-              animationDelay: `${index * 0.2}s`,
-              animationFillMode: "both",
-            }}
-          >
-            <img
-              src={card}
-              alt={`Card ${index + 1}`}
-              className="w-full h-full object-cover"
-            />
-          </div>
-        ))}
+                }
+              `}
+              style={{
+                animationDelay: `${index * 0.2}s`,
+                animationFillMode: "both",
+              }}
+            >
+              <img
+                src={card.image}
+                alt={`Card ${characterType}`}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
