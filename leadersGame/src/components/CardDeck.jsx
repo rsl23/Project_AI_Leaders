@@ -1,6 +1,6 @@
 import React from "react";
 
-const CardDeck = ({ availableCards = [], onCardSelect, selectedCard, deckCount = 0 }) => {
+const CardDeck = ({ availableCards = [], onCardSelect, selectedCard, deckCount = 0, disabled = false }) => {
   const cardTypeMap = {
     acrobate: "Acrobate",
     assassin: "Assassin",
@@ -13,7 +13,7 @@ const CardDeck = ({ availableCards = [], onCardSelect, selectedCard, deckCount =
   };
 
   return (
-    <div className="flex gap-5 items-center">
+    <div className={`flex gap-5 items-center ${disabled ? 'opacity-50' : ''}`}>
       {/* Deck Stack (Tumpukan Kartu) - KIRI */}
       <div className="relative w-32 h-48">
         <div className="absolute bottom-2 -left-2 w-full h-full bg-gradient-to-br from-[#2c1810] to-[#1a0f08] border-4 border-[#8b4513] rounded-xl shadow-lg opacity-60 z-10"></div>
@@ -38,16 +38,19 @@ const CardDeck = ({ availableCards = [], onCardSelect, selectedCard, deckCount =
             <div
               key={index}
               onClick={() => {
-                onCardSelect?.({
-                  image: card.image,
-                  type: characterType,
-                });
+                if (!disabled) {
+                  onCardSelect?.({
+                    image: card.image,
+                    type: characterType,
+                  });
+                }
               }}
               className={`w-32 h-60 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_12px_24px_rgba(212,175,55,0.4)] cursor-pointer animate-slideIn
                 ${selectedCard?.image === card.image
                   ? "ring-4 ring-yellow-400 scale-105"
                   : ""
                 }
+                ${disabled ? 'cursor-not-allowed hover:transform-none hover:shadow-2xl' : ''}
               `}
               style={{
                 animationDelay: `${index * 0.2}s`,

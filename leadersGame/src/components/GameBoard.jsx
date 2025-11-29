@@ -6,12 +6,28 @@ const ORIGINAL_HEIGHT = 2455;
 const GameBoard = ({
   placedCards,
   selectedCard,
+  selectedCharacter,
   turn,
   gamePhase,
   onPositionClick,
+  recruitmentPhase
 }) => {
   const boardRef = useRef(null);
   const [scale, setScale] = useState({ x: 1, y: 1 });
+
+  // === DEFINE SPECIAL POSITIONS ===
+
+  // King's starting positions (tempat awal Raja) - GOLDEN CROWN
+  const kingPositions = {
+    player: "hex-4-7",
+    enemy: "hex-4-1"
+  };
+
+  // Recruitment spaces (lingkaran emas untuk recruit) - GOLDEN CIRCLE
+  const recruitmentSpaces = {
+    player: ['hex-1-4', 'hex-2-5', 'hex-3-6', 'hex-5-6', 'hex-6-5', 'hex-7-4'],
+    enemy: ['hex-1-1', 'hex-2-1', 'hex-3-1', 'hex-5-1', 'hex-6-1', 'hex-7-1']
+  };
 
   // === POSISI ARENA ASLI DALAM PIXEL (AKURAT BERDASARKAN GAMBAR) ===
   const boardPositions = [
@@ -37,13 +53,13 @@ const GameBoard = ({
     { id: "hex-3-6", x: 2050, y: 880, zone: "player" },
 
     // BARIS 4 (7) - TENGAH
-    { id: "hex-4-1", x: 125, y: 1160, zone: "enemy", place: "king" },
+    { id: "hex-4-1", x: 125, y: 1160, zone: "enemy" },
     { id: "hex-4-2", x: 475, y: 1160, zone: "neutral" },
     { id: "hex-4-3", x: 825, y: 1160, zone: "neutral" },
     { id: "hex-4-4", x: 1175, y: 1160, zone: "neutral" },
     { id: "hex-4-5", x: 1525, y: 1160, zone: "neutral" },
     { id: "hex-4-6", x: 1875, y: 1160, zone: "neutral" },
-    { id: "hex-4-7", x: 2225, y: 1160, zone: "player", place: "king" },
+    { id: "hex-4-7", x: 2225, y: 1160, zone: "player" },
 
     // BARIS 5 (6)
     { id: "hex-5-1", x: 300, y: 1440, zone: "enemy" },
@@ -85,6 +101,21 @@ const GameBoard = ({
     return () => window.removeEventListener("resize", updateScale);
   }, []);
 
+  // === Helper functions ===
+  const isKingPosition = (positionId) => {
+    return kingPositions.player === positionId || kingPositions.enemy === positionId;
+  };
+
+  const isRecruitmentSpace = (positionId) => {
+    return recruitmentSpaces.player.includes(positionId) || recruitmentSpaces.enemy.includes(positionId);
+  };
+
+  const getPositionType = (positionId) => {
+    if (isKingPosition(positionId)) return "king";
+    if (isRecruitmentSpace(positionId)) return "recruitment";
+    return "normal";
+  };
+
   return (
     <div className="relative inline-block max-w-2xl">
       <img
@@ -107,6 +138,8 @@ const GameBoard = ({
           const cardAtPosition = placedCards?.find(
             (p) => p.positionId === pos.id
           );
+          const positionType = getPositionType(pos.id);
+          const isSelectingRecruitmentPosition = recruitmentPhase?.selectingPosition;
 
           return (
             <div
@@ -115,26 +148,32 @@ const GameBoard = ({
               className={`
               absolute w-24 h-24 rounded-full border-4
               flex items-center justify-center transition-all duration-300
-              ${
-                cardAtPosition
+              ${cardAtPosition
                   ? cardAtPosition.isKing
                     ? "border-yellow-400 bg-yellow-900/60 ring-4 ring-yellow-300"
                     : "border-green-400 bg-green-900/40"
-                  : pos.place === "king"
-                  ? "border-gray-600 bg-gray-800/40 cursor-not-allowed"
-                  : pos.zone === turn && gamePhase === "placement"
-                  ? "border-blue-400 bg-blue-500/20 hover:bg-blue-500/40 cursor-pointer"
-                  : "border-gray-400 bg-gray-500/10 cursor-not-allowed"
-              }
-              ${
-                selectedCard &&
-                !cardAtPosition &&
-                pos.place !== "king" &&
-                pos.zone === turn &&
-                gamePhase === "placement"
-                  ? "animate-pulse ring-2 ring-white"
+                  : positionType === "king"
+                    ? "border-yellow-600 bg-yellow-900/40 ring-2 ring-yellow-500"
+                    : positionType === "recruitment"
+                      ? "border-amber-400 bg-amber-900/40 ring-2 ring-amber-300"
+                      : "border-gray-400 bg-gray-500/10"
+                }
+              ${selectedCard &&
+                  !cardAtPosition &&
+                  positionType !== "king" &&
+                  pos.zone === turn &&
+                  gamePhase === "placement"
+                  ? "animate-pulse ring-2 ring-white cursor-pointer"
                   : ""
-              }
+                }
+              ${isSelectingRecruitmentPosition &&
+                  positionType === "recruitment" &&
+                  pos.zone === turn &&
+                  !cardAtPosition
+                  ? "animate-pulse ring-4 ring-green-400 bg-green-900/40 cursor-pointer"
+                  : ""
+                }
+              ${!cardAtPosition && positionType !== "king" && positionType !== "recruitment" ? "cursor-not-allowed" : ""}
             `}
               style={{
                 left: pos.x * scale.x,
@@ -147,12 +186,16 @@ const GameBoard = ({
               {cardAtPosition && (
                 <img
                   src={cardAtPosition.cardImage}
-                  className={`w-full h-full object-cover rounded-full border-2 ${
-                    cardAtPosition.isKing ? "border-yellow-300" : "border-white"
-                  }`}
+                  className={`w-full h-full object-cover rounded-full border-2 ${cardAtPosition.isKing ? "border-yellow-300" : "border-white"
+                    }`}
                   style={{ transform: "rotate(-90deg)" }}
                   alt="Character"
                 />
+              )}
+
+              {/* HIGHLIGHT SELECTED CHARACTER */}
+              {selectedCharacter?.positionId === pos.id && (
+                <div className="absolute inset-0 rounded-full border-4 border-blue-400 animate-pulse" style={{ transform: "rotate(-90deg)" }}></div>
               )}
             </div>
           );
