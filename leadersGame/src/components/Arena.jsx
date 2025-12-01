@@ -38,13 +38,21 @@ const Arena = () => {
   useEffect(() => {
     const allCards = [
       { type: "Acrobate", image: "/Composants_2D/Cartes/cartes_acrobate.jpg" },
+      { type: "Archer", image: "/Composants_2D/Cartes/cartes_archer.jpg" },
       { type: "Assassin", image: "/Composants_2D/Cartes/cartes_assassin.jpg" },
+      { type: "Cavalier", image: "/Composants_2D/Cartes/cartes_cavalier.jpg" },
+      { type: "Cogneur", image: "/Composants_2D/Cartes/cartes_cogneur.jpg" },
       { type: "GardeRoyal", image: "/Composants_2D/Cartes/cartes_gardeRoyal.jpg" },
       { type: "Geolier", image: "/Composants_2D/Cartes/cartes_geolier.jpg" },
+      { type: "Illusionist", image: "/Composants_2D/Cartes/cartes_illusionist.jpg" },
       { type: "LanceGrappin", image: "/Composants_2D/Cartes/cartes_lanceGrappin.jpg" },
+      { type: "Manipulator", image: "/Composants_2D/Cartes/cartes_manipulator.jpg" },
+      { type: "Nemesis", image: "/Composants_2D/Cartes/cartes_nemesis.jpg" },
       { type: "VieilOurs", image: "/Composants_2D/Cartes/cartes_oldBear.jpg" },
+      { type: "Protector", image: "/Composants_2D/Cartes/cartes_protector.jpg" },
+      { type: "Rodeuse", image: "/Composants_2D/Cartes/cartes_rodeuse.jpg" },
       { type: "Tavernier", image: "/Composants_2D/Cartes/cartes_tavernier.jpg" },
-      { type: "Vizir", image: "/Composants_2D/Cartes/cartes_vizir.jpg" },
+      { type: "Vizir", image: "/Composants_2D/Cartes/cartes_vizir.jpg" }
     ];
 
     const shuffledDeck = [...allCards].sort(() => Math.random() - 0.5);
@@ -121,11 +129,14 @@ const Arena = () => {
     }
   };
 
+  // FIXED: When selecting a card during recruitment, remove it immediately from availableCards
   const handleCardSelect = (card) => {
     // DI BATTLE PHASE: Hanya boleh pilih kartu jika di recruitment phase
     if (gamePhase === "battle" && currentPhase === "recruitment") {
       if (recruitmentPhase.selectingCard) {
-        // Jika sedang pilih kartu (belum pilih posisi)
+        // Remove the selected card immediately so it disappears from the deck UI
+        setAvailableCards(prev => prev.filter(c => c.type !== card.type));
+
         setRecruitmentPhase({
           selectingCard: false,
           selectedRecruitmentCard: card,
@@ -141,71 +152,35 @@ const Arena = () => {
     }
   };
 
-  // === COMPLETE ADJACENCY MAPPING ===
   const getAdjacentPositions = (positionId) => {
-    const [_, row, col] = positionId.split('-');
-    const rowNum = parseInt(row);
-    const colNum = parseInt(col);
-
-    // DEFINE MAX COLUMNS PER ROW
-    const maxCols = {
-      1: 4,  // row 1: 4 hex
-      2: 5,  // row 2: 5 hex  
-      3: 6,  // row 3: 6 hex
-      4: 7,  // row 4: 7 hex (tengah)
-      5: 6,  // row 5: 6 hex
-      6: 5,  // row 6: 5 hex
-      7: 4   // row 7: 4 hex
-    };
-
+    const [_, row, col] = positionId.split('-').map(Number);
+    const maxCols = { 1: 4, 2: 5, 3: 6, 4: 7, 5: 6, 6: 5, 7: 4 };
     const adjacent = [];
 
-    // HORIZONTAL - KIRI & KANAN (selalu ada)
-    if (colNum > 1) adjacent.push(`hex-${rowNum}-${colNum - 1}`);
-    if (colNum < maxCols[rowNum]) adjacent.push(`hex-${rowNum}-${colNum + 1}`);
+    // Horizontal
+    if (col > 1) adjacent.push(`hex-${row}-${col - 1}`);
+    if (col < maxCols[row]) adjacent.push(`hex-${row}-${col + 1}`);
 
-    // VERTICAL & DIAGONAL - FIXED PATTERN
-    if (rowNum % 2 === 0) {
-      // BARIS GENAP (2, 4, 6) - OFFSET KE KANAN
+    // Vertical & diagonal
+    const neighbors = [
+      { r: row - 1, c: col },     // up
+      { r: row - 1, c: col - 1 },   // up-left
+      { r: row - 1, c: col + 1 },   // up-right
+      { r: row + 1, c: col },     // down
+      { r: row + 1, c: col - 1 },   // down-left
+      { r: row + 1, c: col + 1 },   // down-right
+    ];
 
-      // ATAS
-      if (rowNum > 1) {
-        adjacent.push(`hex-${rowNum - 1}-${colNum}`);        // Atas kiri
-        if (colNum < maxCols[rowNum - 1]) {
-          adjacent.push(`hex-${rowNum - 1}-${colNum + 1}`);  // Atas kanan
-        }
+    neighbors.forEach(({ r, c }) => {
+      if (r >= 1 && r <= 7 && c >= 1 && c <= (maxCols[r] || 0)) {
+        adjacent.push(`hex-${r}-${c}`);
       }
+    });
 
-      // BAWAH  
-      if (rowNum < 7) {
-        adjacent.push(`hex-${rowNum + 1}-${colNum}`);        // Bawah kiri
-        if (colNum < maxCols[rowNum + 1]) {
-          adjacent.push(`hex-${rowNum + 1}-${colNum + 1}`);  // Bawah kanan
-        }
-      }
-    } else {
-      // BARIS GANJIL (1, 3, 5, 7) - OFFSET KE KIRI
-
-      // ATAS
-      if (rowNum > 1) {
-        if (colNum > 1) {
-          adjacent.push(`hex-${rowNum - 1}-${colNum - 1}`);  // Atas kiri
-        }
-        adjacent.push(`hex-${rowNum - 1}-${colNum}`);        // Atas kanan
-      }
-
-      // BAWAH
-      if (rowNum < 7) {
-        if (colNum > 1) {
-          adjacent.push(`hex-${rowNum + 1}-${colNum - 1}`);  // Bawah kiri
-        }
-        adjacent.push(`hex-${rowNum + 1}-${colNum}`);        // Bawah kanan
-      }
-    }
-
-    console.log(`📍 Adjacent to ${positionId}:`, adjacent);
     return adjacent;
   };
+
+
 
   // TEST FUNCTION OTOMATIS
   useEffect(() => {
@@ -325,7 +300,6 @@ const Arena = () => {
 
         setPlacedCards(newPlacedCards);
 
-        // Tandai karakter sudah melakukan aksi
         const newActions = {
           ...characterActions,
           [selectedCharacter.cardData.type]: true
@@ -334,7 +308,6 @@ const Arena = () => {
         setCharacterActions(newActions);
         setSelectedCharacter(null);
 
-        // Cek win condition setelah move
         setTimeout(() => checkWinCondition(), 100);
 
         // Auto cek apakah semua karakter sudah bertindak
@@ -344,19 +317,13 @@ const Arena = () => {
             newActions[character.cardData.type]
           );
 
-          console.log("🎯 ACTION CHECK:");
-          console.log("- Characters:", currentPlayerCharacters.map(c => ({ type: c.cardData.type, acted: newActions[c.cardData.type] })));
-          console.log("- All acted:", allCharactersActed);
-
           if (allCharactersActed && currentPlayerCharacters.length > 0) {
-            console.log("🎯 AUTO MOVING TO RECRUITMENT PHASE!");
             setCurrentPhase("recruitment");
             setSelectedCharacter(null);
             checkSkipRecruitment();
           }
         }, 200);
       } else {
-        console.log("❌ Not adjacent - cannot move");
         alert("Hanya bisa pindah ke posisi yang adjacent!");
       }
     }
@@ -407,13 +374,15 @@ const Arena = () => {
     ];
 
     // Update available cards
+    // NOTE: we already removed the selected card in handleCardSelect, so availableCards
+    // does not contain selectedRecruitmentCard anymore. We still filter just in case.
     const newAvailableCards = availableCards.filter(availCard => availCard.type !== selectedRecruitmentCard.type);
     let finalAvailableCards = newAvailableCards;
     let finalDeck = [...deck];
 
     if (deck.length > 0) {
       const newCard = deck[0];
-      finalAvailableCards = [...newAvailableCards, newCard];
+      finalAvailableCards = [...finalAvailableCards, newCard];
       finalDeck = deck.slice(1);
     }
 
@@ -439,19 +408,8 @@ const Arena = () => {
     }
   };
 
-  // Skip action phase manual
-  const handleSkipActionPhase = () => {
-    if (gamePhase !== "battle" || currentPhase !== "action") return;
-    setCurrentPhase("recruitment");
-    setSelectedCharacter(null);
-    checkSkipRecruitment();
-  };
-
-  // Skip recruitment phase manual
-  const handleSkipRecruitmentPhase = () => {
-    if (gamePhase !== "battle" || currentPhase !== "recruitment") return;
-    handleEndTurn();
-  };
+  // Skip action phase manual (dihapus sesuai rules - tidak dipakai)
+  // Skip recruitment phase manual (dihapus sesuai rules - tidak dipakai)
 
   const checkWinCondition = () => {
     const playerKing = placedCards.find(p => p.owner === "player" && p.isKing);
@@ -470,7 +428,6 @@ const Arena = () => {
       if (enemiesNear.length >= 2) {
         setTimeout(() => {
           alert("🎉 Enemy wins! Player King captured!");
-          // Reset game atau lakukan sesuatu
         }, 100);
         return;
       }
@@ -513,28 +470,8 @@ const Arena = () => {
     }
   };
 
-  // === HAPUS TOMBOL SKIP (sesuai rules) ===
-  // HAPUS fungsi handleSkipActionPhase dan handleSkipRecruitmentPhase
-
   // === DI JSX - HAPUS TOMBOL SKIP ===
-  {
-    gamePhase === "battle" && currentPhase === "recruitment" && (
-      <div className="mt-2">
-        {recruitmentPhase.selectingPosition ? (
-          <p className="text-green-400 text-sm">
-            Pilih posisi di recruitment space (lingkaran emas) untuk menempatkan {recruitmentPhase.selectedRecruitmentCard?.type}
-          </p>
-        ) : (
-          <p className="text-blue-400 text-sm">
-            {placedCards.filter(p => p.owner === turn).length >= 5 ?
-              "Max characters reached - Auto skipping..." :
-              "Pilih kartu untuk recruit"}
-          </p>
-        )}
-        {/* HAPUS TOMBOL SKIP RECRUITMENT */}
-      </div>
-    )
-  }
+  // NOTE: Komponen GameBoard & CardDeck diasumsikan mengikuti props yang ada.
 
   // === PLACEMENT PHASE HANDLER (TIDAK DIUBAH) ===
   const handlePositionClick = (position) => {
@@ -586,6 +523,7 @@ const Arena = () => {
         },
       ];
 
+      // Remove selected card from available and refill from deck
       const newAvailableCards = availableCards.filter(card => card.type !== selectedCard.type);
 
       let finalAvailableCards = newAvailableCards;
@@ -694,14 +632,7 @@ const Arena = () => {
                   "Pilih kartu untuk recruit"}
               </p>
             )}
-            {placedCards.filter(p => p.owner === turn).length < 5 && (
-              <button
-                onClick={handleSkipRecruitmentPhase}
-                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-bold mt-1"
-              >
-                Skip Recruitment
-              </button>
-            )}
+            {/* TOMBOL SKIP DIHAPUS SESUAI CATATAN */}
           </div>
         )}
       </div>

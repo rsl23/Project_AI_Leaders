@@ -3,29 +3,32 @@ import React from "react";
 const CardDeck = ({ availableCards = [], onCardSelect, selectedCard, deckCount = 0, disabled = false }) => {
   const cardTypeMap = {
     acrobate: "Acrobate",
+    archer: "Archer",
     assassin: "Assassin",
+    cavalier: "Cavalier",
+    cogneur: "Cogneur",
     gardeRoyal: "GardeRoyal",
     geolier: "Geolier",
+    illusionist: "Illusionist",
     lanceGrappin: "LanceGrappin",
+    manipulator: "Manipulator",
+    nemesis: "Nemesis",
     oldBear: "VieilOurs",
+    protector: "Protector",
+    rodeuse: "Rodeuse",
     tavernier: "Tavernier",
-    vizir: "Vizir",
+    vizir: "Vizir"
   };
+  // ...
 
   return (
     <div className={`flex gap-5 items-center ${disabled ? 'opacity-50' : ''}`}>
-      {/* Deck Stack (Tumpukan Kartu) - KIRI */}
-      <div className="relative w-32 h-48">
-        <div className="absolute bottom-2 -left-2 w-full h-full bg-gradient-to-br from-[#2c1810] to-[#1a0f08] border-4 border-[#8b4513] rounded-xl shadow-lg opacity-60 z-10"></div>
-        <div className="absolute bottom-1 -left-1 w-full h-full bg-gradient-to-br from-[#2c1810] to-[#1a0f08] border-4 border-[#8b4513] rounded-xl shadow-lg opacity-80 z-20"></div>
-        <div className="absolute bottom-0 left-0 w-full h-full bg-gradient-to-br from-[#2c1810] to-[#1a0f08] border-4 border-[#8b4513] rounded-xl shadow-2xl flex items-center justify-center z-30">
-          <div
-            className="text-5xl font-bold text-[#d4af37]"
-            style={{ textShadow: "0 0 10px rgba(212, 175, 55, 0.5)" }}
-          >
-            {deckCount}
-          </div>
-        </div>
+      <div className="w-32 h-60 rounded-xl overflow-hidden shadow-2xl">
+        <img
+          src="bg-card.jpg"
+          alt="Deck Background"
+          className="w-full h-full object-cover rounded-xl"
+        />
       </div>
 
       {/* Drawn Cards (3 Kartu yang Keluar) - KANAN */}
