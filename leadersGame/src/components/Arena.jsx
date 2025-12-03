@@ -4,6 +4,7 @@ import CardDeck from "./CardDeck";
 import GameInfo from "./GameInfo";
 import GameBoard from "./GameBoard";
 import { Link } from "react-router-dom";
+import { characterInfo } from "../data/characterInfo";
 
 const Arena = () => {
   const audioRef = useRef(null);
@@ -24,6 +25,7 @@ const Arena = () => {
   // === BATTLE STATE ===
   const [selectedCharacter, setSelectedCharacter] = useState(null);
   const [characterActions, setCharacterActions] = useState({});
+  const [activeAbilityUsed, setActiveAbilityUsed] = useState({}); // Track active ability usage
   const [currentPhase, setCurrentPhase] = useState("action"); // "action" | "recruitment"
   const [recruitmentCount, setRecruitmentCount] = useState(1); // Untuk pemain kedua di turn pertama
   const [secondPlayerUsedBonus, setSecondPlayerUsedBonus] = useState(false);
@@ -229,6 +231,7 @@ const Arena = () => {
 
     setCurrentPhase("action");
     setCharacterActions({});
+    setActiveAbilityUsed({}); // Reset active ability usage for new action phase
     setSelectedCharacter(null);
     setSelectedCard(null);
     setRecruitmentCount(1);
@@ -251,6 +254,62 @@ const Arena = () => {
     // Langsung ke recruitment phase
     setCurrentPhase("recruitment");
     checkSkipRecruitment();
+  };
+
+  // === USE ACTIVE ABILITY ===
+  const handleUseActiveAbility = () => {
+    if (!selectedCharacter) {
+      alert("Pilih karakter terlebih dahulu!");
+      return;
+    }
+
+    const characterType = selectedCharacter.cardData.type;
+
+    // Check if already used
+    if (activeAbilityUsed[characterType]) {
+      return;
+    }
+
+    // Check if character has already acted
+    if (characterActions[characterType]) {
+      return;
+    }
+
+    // Mark ability as used
+    setActiveAbilityUsed({
+      ...activeAbilityUsed,
+      [characterType]: true,
+    });
+
+    // Mark character as having acted (cannot move anymore)
+    setCharacterActions({
+      ...characterActions,
+      [characterType]: true,
+    });
+
+    // Deselect character
+    setSelectedCharacter(null);
+
+    // TODO: Implement specific active ability logic for each character
+
+    // Check if all characters have acted
+    setTimeout(() => {
+      const currentPlayerCharacters = placedCards.filter(
+        (card) => card.owner === turn
+      );
+      const newActions = {
+        ...characterActions,
+        [characterType]: true,
+      };
+      const allCharactersActed = currentPlayerCharacters.every(
+        (character) => newActions[character.cardData.type]
+      );
+
+      if (allCharactersActed && currentPlayerCharacters.length > 0) {
+        setCurrentPhase("recruitment");
+        checkSkipRecruitment();
+      }
+    }, 200);
   };
 
   // Cek apakah semua karakter sudah melakukan aksi
@@ -331,6 +390,14 @@ const Arena = () => {
       selectedCharacter &&
       !placedCards.find((card) => card.positionId === position.id)
     ) {
+      // Check if character has already used active ability (cannot move)
+      if (activeAbilityUsed[selectedCharacter.cardData.type]) {
+        alert(
+          "Character ini sudah menggunakan active ability dan tidak bisa move!"
+        );
+        return;
+      }
+
       const adjacentPositions = getAdjacentPositions(
         selectedCharacter.positionId
       );
@@ -689,6 +756,7 @@ const Arena = () => {
         gamePhase={gamePhase}
         onPositionClick={handlePositionClick}
         recruitmentPhase={recruitmentPhase} // Pass recruitment phase ke GameBoard
+        activeAbilityUsed={activeAbilityUsed} // Pass active ability usage state
       />
 
       <div className="absolute top-4 translate-x-150 z-20 bg-black/80 px-6 py-3 rounded-lg border-2 border-yellow-400">
@@ -733,6 +801,25 @@ const Arena = () => {
                 ).length
               }
             </p>
+
+            {/* Use Active Ability Button - Show only for selected Active characters */}
+            {selectedCharacter &&
+              characterInfo[selectedCharacter.cardData.type]?.category ===
+                "Active" && (
+                <button
+                  onClick={handleUseActiveAbility}
+                  disabled={activeAbilityUsed[selectedCharacter.cardData.type]}
+                  className={`mt-2 w-full px-4 py-2 font-bold rounded-lg border-2 shadow-lg transition-all duration-300 ${
+                    activeAbilityUsed[selectedCharacter.cardData.type]
+                      ? "bg-gray-600 border-gray-500 text-gray-400 cursor-not-allowed"
+                      : "bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white border-purple-400 hover:scale-105"
+                  }`}
+                >
+                  {activeAbilityUsed[selectedCharacter.cardData.type]
+                    ? "✓ Ability Used"
+                    : "⚡ Use Active Ability"}
+                </button>
+              )}
 
             {/* End Action Phase Button */}
             <button

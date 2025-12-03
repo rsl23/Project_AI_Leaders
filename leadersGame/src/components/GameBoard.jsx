@@ -13,6 +13,7 @@ const GameBoard = ({
   gamePhase,
   onPositionClick,
   recruitmentPhase,
+  activeAbilityUsed,
 }) => {
   const boardRef = useRef(null);
   const [scale, setScale] = useState({ x: 1, y: 1 });
@@ -224,16 +225,42 @@ const GameBoard = ({
               >
                 {/* CARD IMAGE - Counter-rotate agar tidak ikut rotate */}
                 {cardAtPosition && (
-                  <img
-                    src={cardAtPosition.cardImage}
-                    className={`w-full h-full object-cover rounded-full border-2 ${
-                      cardAtPosition.isKing
-                        ? "border-yellow-300"
-                        : "border-white"
-                    }`}
-                    style={{ transform: "rotate(-90deg)" }}
-                    alt="Character"
-                  />
+                  <>
+                    <img
+                      src={cardAtPosition.cardImage}
+                      className={`w-full h-full object-cover rounded-full border-2 ${
+                        cardAtPosition.isKing
+                          ? "border-yellow-300"
+                          : "border-white"
+                      }`}
+                      style={{ transform: "rotate(-90deg)" }}
+                      alt="Character"
+                    />
+
+                    {/* Active Ability Icon - Show for Active category characters */}
+                    {!cardAtPosition.isKing &&
+                      characterInfo[cardAtPosition.cardData.type]?.category ===
+                        "Active" && (
+                        <div
+                          className="absolute -bottom-1 -right-1"
+                          style={{
+                            transform: "rotate(-90deg)",
+                            zIndex: 20,
+                          }}
+                        >
+                          <img
+                            src="/activeAbility.png"
+                            alt="Active Ability"
+                            className={`w-11 h-11 ${
+                              activeAbilityUsed?.[cardAtPosition.cardData.type]
+                                ? "opacity-40 grayscale"
+                                : "opacity-100"
+                            }`}
+                            title="Active Ability Available"
+                          />
+                        </div>
+                      )}
+                  </>
                 )}
 
                 {/* HIGHLIGHT SELECTED CHARACTER */}
