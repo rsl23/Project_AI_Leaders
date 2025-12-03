@@ -1,4 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
+import CharacterTooltip from "./CharacterTooltip";
+import { characterInfo } from "../data/characterInfo";
 
 const ORIGINAL_WIDTH = 2126;
 const ORIGINAL_HEIGHT = 2455;
@@ -10,23 +12,40 @@ const GameBoard = ({
   turn,
   gamePhase,
   onPositionClick,
-  recruitmentPhase
+  recruitmentPhase,
 }) => {
   const boardRef = useRef(null);
   const [scale, setScale] = useState({ x: 1, y: 1 });
+  const [hoveredPosition, setHoveredPosition] = useState(null);
 
   // === DEFINE SPECIAL POSITIONS ===
 
   // King's starting positions (tempat awal Raja) - GOLDEN CROWN
   const kingPositions = {
     player: "hex-4-7",
-    enemy: "hex-4-1"
+    enemy: "hex-4-1",
   };
 
   // Recruitment spaces (lingkaran emas untuk recruit) - GOLDEN CIRCLE
   const recruitmentSpaces = {
-    player: ['hex-1-4', 'hex-2-5', 'hex-3-6', 'hex-5-6', 'hex-6-5', 'hex-7-4'],
-    enemy: ['hex-1-1', 'hex-2-1', 'hex-3-1', 'hex-5-1', 'hex-6-1', 'hex-7-1']
+    player: [
+      "hex-1-4",
+      "hex-2-5",
+      "hex-3-6",
+      "hex-4-7",
+      "hex-5-6",
+      "hex-6-5",
+      "hex-7-4",
+    ],
+    enemy: [
+      "hex-1-1",
+      "hex-2-1",
+      "hex-3-1",
+      "hex-4-1",
+      "hex-5-1",
+      "hex-6-1",
+      "hex-7-1",
+    ],
   };
 
   // === POSISI ARENA ASLI DALAM PIXEL (AKURAT BERDASARKAN GAMBAR) ===
@@ -103,15 +122,21 @@ const GameBoard = ({
 
   // === Helper functions ===
   const isKingPosition = (positionId) => {
-    return kingPositions.player === positionId || kingPositions.enemy === positionId;
+    return (
+      kingPositions.player === positionId || kingPositions.enemy === positionId
+    );
   };
 
   const isRecruitmentSpace = (positionId) => {
-    return recruitmentSpaces.player.includes(positionId) || recruitmentSpaces.enemy.includes(positionId);
+    return (
+      recruitmentSpaces.player.includes(positionId) ||
+      recruitmentSpaces.enemy.includes(positionId)
+    );
   };
 
-  const getPositionType = (positionId) => {
-    if (isKingPosition(positionId)) return "king";
+  const getPositionType = (positionId, hasKing) => {
+    // Hanya tandai sebagai "king" jika ada king di posisi tersebut saat ini
+    if (hasKing) return "king";
     if (isRecruitmentSpace(positionId)) return "recruitment";
     return "normal";
   };
@@ -138,64 +163,105 @@ const GameBoard = ({
           const cardAtPosition = placedCards?.find(
             (p) => p.positionId === pos.id
           );
-          const positionType = getPositionType(pos.id);
-          const isSelectingRecruitmentPosition = recruitmentPhase?.selectingPosition;
+          const positionType = getPositionType(pos.id, cardAtPosition?.isKing);
+          const isSelectingRecruitmentPosition =
+            recruitmentPhase?.selectingPosition;
 
           return (
             <div
               key={pos.id}
-              onClick={() => onPositionClick?.(pos)}
-              className={`
+              className="relative"
+              onMouseEnter={() => cardAtPosition && setHoveredPosition(pos.id)}
+              onMouseLeave={() => setHoveredPosition(null)}
+            >
+              <div
+                onClick={() => onPositionClick?.(pos)}
+                className={`
               absolute w-24 h-24 rounded-full border-4
               flex items-center justify-center transition-all duration-300
-              ${cardAtPosition
+              ${
+                cardAtPosition
                   ? cardAtPosition.isKing
                     ? "border-yellow-400 bg-yellow-900/60 ring-4 ring-yellow-300"
                     : "border-green-400 bg-green-900/40"
                   : positionType === "king"
-                    ? "border-yellow-600 bg-yellow-900/40 ring-2 ring-yellow-500"
-                    : positionType === "recruitment"
-                      ? "border-amber-400 bg-amber-900/40 ring-2 ring-amber-300"
-                      : "border-gray-400 bg-gray-500/10"
-                }
-              ${selectedCard &&
-                  !cardAtPosition &&
-                  positionType !== "king" &&
-                  pos.zone === turn &&
-                  gamePhase === "placement"
+                  ? "border-yellow-600 bg-yellow-900/40 ring-2 ring-yellow-500"
+                  : positionType === "recruitment"
+                  ? "border-amber-400 bg-amber-900/40 ring-2 ring-amber-300"
+                  : "border-gray-400 bg-gray-500/10"
+              }
+              ${
+                selectedCard &&
+                !cardAtPosition &&
+                positionType !== "king" &&
+                pos.zone === turn &&
+                gamePhase === "placement"
                   ? "animate-pulse ring-2 ring-white cursor-pointer"
                   : ""
-                }
-              ${isSelectingRecruitmentPosition &&
-                  positionType === "recruitment" &&
-                  pos.zone === turn &&
-                  !cardAtPosition
+              }
+              ${
+                isSelectingRecruitmentPosition &&
+                positionType === "recruitment" &&
+                pos.zone === turn &&
+                !cardAtPosition
                   ? "animate-pulse ring-4 ring-green-400 bg-green-900/40 cursor-pointer"
                   : ""
-                }
-              ${!cardAtPosition && positionType !== "king" && positionType !== "recruitment" ? "cursor-not-allowed" : ""}
+              }
+              ${
+                !cardAtPosition &&
+                positionType !== "king" &&
+                positionType !== "recruitment"
+                  ? "cursor-not-allowed"
+                  : ""
+              }
             `}
-              style={{
-                left: pos.x * scale.x,
-                top: pos.y * scale.y,
-                transform: "translate(-50%, -50%)",
-                zIndex: cardAtPosition?.isKing ? 15 : 10,
-              }}
-            >
-              {/* CARD IMAGE - Counter-rotate agar tidak ikut rotate */}
-              {cardAtPosition && (
-                <img
-                  src={cardAtPosition.cardImage}
-                  className={`w-full h-full object-cover rounded-full border-2 ${cardAtPosition.isKing ? "border-yellow-300" : "border-white"
+                style={{
+                  left: pos.x * scale.x,
+                  top: pos.y * scale.y,
+                  transform: "translate(-50%, -50%)",
+                  zIndex: cardAtPosition?.isKing ? 15 : 10,
+                }}
+              >
+                {/* CARD IMAGE - Counter-rotate agar tidak ikut rotate */}
+                {cardAtPosition && (
+                  <img
+                    src={cardAtPosition.cardImage}
+                    className={`w-full h-full object-cover rounded-full border-2 ${
+                      cardAtPosition.isKing
+                        ? "border-yellow-300"
+                        : "border-white"
                     }`}
-                  style={{ transform: "rotate(-90deg)" }}
-                  alt="Character"
-                />
-              )}
+                    style={{ transform: "rotate(-90deg)" }}
+                    alt="Character"
+                  />
+                )}
 
-              {/* HIGHLIGHT SELECTED CHARACTER */}
-              {selectedCharacter?.positionId === pos.id && (
-                <div className="absolute inset-0 rounded-full border-4 border-blue-400 animate-pulse" style={{ transform: "rotate(-90deg)" }}></div>
+                {/* HIGHLIGHT SELECTED CHARACTER */}
+                {selectedCharacter?.positionId === pos.id && (
+                  <div
+                    className="absolute inset-0 rounded-full border-4 border-blue-400 animate-pulse"
+                    style={{ transform: "rotate(-90deg)" }}
+                  ></div>
+                )}
+              </div>
+
+              {/* Tooltip - Only show if there's a card at this position */}
+              {cardAtPosition && (
+                <div
+                  className="absolute"
+                  style={{
+                    left: pos.x * scale.x,
+                    top: pos.y * scale.y,
+                    transform: "translate(-50%, -50%) rotate(-90deg)",
+                    zIndex: 100,
+                    pointerEvents: "none",
+                  }}
+                >
+                  <CharacterTooltip
+                    info={characterInfo[cardAtPosition.cardData.type]}
+                    visible={hoveredPosition === pos.id}
+                  />
+                </div>
               )}
             </div>
           );

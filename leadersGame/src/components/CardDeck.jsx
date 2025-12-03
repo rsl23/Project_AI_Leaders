@@ -1,6 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
+import CharacterTooltip from "./CharacterTooltip";
+import { characterInfo } from "../data/characterInfo";
 
-const CardDeck = ({ availableCards = [], onCardSelect, selectedCard, deckCount = 0, disabled = false }) => {
+const CardDeck = ({
+  availableCards = [],
+  onCardSelect,
+  selectedCard,
+  deckCount = 0,
+  disabled = false,
+}) => {
+  const [hoveredCard, setHoveredCard] = useState(null);
+
   const cardTypeMap = {
     acrobate: "Acrobate",
     archer: "Archer",
@@ -17,12 +27,12 @@ const CardDeck = ({ availableCards = [], onCardSelect, selectedCard, deckCount =
     protector: "Protector",
     rodeuse: "Rodeuse",
     tavernier: "Tavernier",
-    vizir: "Vizir"
+    vizir: "Vizir",
   };
   // ...
 
   return (
-    <div className={`flex gap-5 items-center ${disabled ? 'opacity-50' : ''}`}>
+    <div className={`flex gap-5 items-center ${disabled ? "opacity-50" : ""}`}>
       <div className="w-32 h-60 rounded-xl overflow-hidden shadow-2xl">
         <img
           src="bg-card.jpg"
@@ -34,36 +44,57 @@ const CardDeck = ({ availableCards = [], onCardSelect, selectedCard, deckCount =
       {/* Drawn Cards (3 Kartu yang Keluar) - KANAN */}
       <div className="flex flex-col gap-4 items-center">
         {availableCards.map((card, index) => {
-          const rawType = card.image.split("/").pop().split("_")[1].split(".")[0];
+          const rawType = card.image
+            .split("/")
+            .pop()
+            .split("_")[1]
+            .split(".")[0];
           const characterType = cardTypeMap[rawType] || rawType;
 
           return (
             <div
               key={index}
-              onClick={() => {
-                if (!disabled) {
-                  onCardSelect?.({
-                    image: card.image,
-                    type: characterType,
-                  });
-                }
-              }}
-              className={`w-32 h-60 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_12px_24px_rgba(212,175,55,0.4)] cursor-pointer animate-slideIn
-                ${selectedCard?.image === card.image
-                  ? "ring-4 ring-yellow-400 scale-105"
-                  : ""
-                }
-                ${disabled ? 'cursor-not-allowed hover:transform-none hover:shadow-2xl' : ''}
-              `}
-              style={{
-                animationDelay: `${index * 0.2}s`,
-                animationFillMode: "both",
-              }}
+              className="relative"
+              onMouseEnter={() => setHoveredCard(characterType)}
+              onMouseLeave={() => setHoveredCard(null)}
             >
-              <img
-                src={card.image}
-                alt={`Card ${characterType}`}
-                className="w-full h-full object-cover"
+              <div
+                onClick={() => {
+                  if (!disabled) {
+                    onCardSelect?.({
+                      image: card.image,
+                      type: characterType,
+                    });
+                  }
+                }}
+                className={`w-32 h-60 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 hover:-translate-y-2 hover:scale-105 hover:shadow-[0_12px_24px_rgba(212,175,55,0.4)] cursor-pointer animate-slideIn
+                  ${
+                    selectedCard?.image === card.image
+                      ? "ring-4 ring-yellow-400 scale-105"
+                      : ""
+                  }
+                  ${
+                    disabled
+                      ? "cursor-not-allowed hover:transform-none hover:shadow-2xl"
+                      : ""
+                  }
+                `}
+                style={{
+                  animationDelay: `${index * 0.2}s`,
+                  animationFillMode: "both",
+                }}
+              >
+                <img
+                  src={card.image}
+                  alt={`Card ${characterType}`}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              {/* Tooltip */}
+              <CharacterTooltip
+                info={characterInfo[characterType]}
+                visible={hoveredCard === characterType}
               />
             </div>
           );
