@@ -241,6 +241,18 @@ const Arena = () => {
     setTurn(turn === "player" ? "enemy" : "player");
   };
 
+  // === MANUAL END ACTION PHASE ===
+  const handleEndActionPhase = () => {
+    if (gamePhase !== "battle" || currentPhase !== "action") return;
+
+    // Clear selected character
+    setSelectedCharacter(null);
+
+    // Langsung ke recruitment phase
+    setCurrentPhase("recruitment");
+    checkSkipRecruitment();
+  };
+
   // Cek apakah semua karakter sudah melakukan aksi
   const checkAllCharactersActed = () => {
     const currentPlayerCharacters = placedCards.filter(
@@ -687,7 +699,10 @@ const Arena = () => {
             } Turn`}
           {gamePhase === "battle" &&
             `⚡ Battle Phase - ${
-              turn === "player" ? "White's" : "Black's"
+              (turn === "player" && playerColor === "white") ||
+              (turn === "enemy" && enemyColor === "white")
+                ? "⚪ White's"
+                : "⚫ Black's"
             } Turn - ${
               currentPhase === "action" ? "Action Phase" : "Recruitment Phase"
             }`}
@@ -718,6 +733,14 @@ const Arena = () => {
                 ).length
               }
             </p>
+
+            {/* End Action Phase Button */}
+            <button
+              onClick={handleEndActionPhase}
+              className="mt-3 w-full px-4 py-2 bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-500 hover:to-yellow-600 text-white font-bold rounded-lg border-2 border-yellow-400 shadow-lg transition-all duration-300 hover:scale-105"
+            >
+              End Action Phase
+            </button>
           </div>
         )}
 

@@ -1,12 +1,20 @@
 import React from "react";
 
 const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
-  // Filter karakter untuk masing-masing player (exclude king)
+  // Filter karakter untuk masing-masing player (exclude king untuk count, tapi include untuk display)
   const playerCards =
     placedCards?.filter((card) => card.owner === "player" && !card.isKing) ||
     [];
   const enemyCards =
     placedCards?.filter((card) => card.owner === "enemy" && !card.isKing) || [];
+
+  // Get king cards
+  const playerKing = placedCards?.find(
+    (card) => card.owner === "player" && card.isKing
+  );
+  const enemyKing = placedCards?.find(
+    (card) => card.owner === "enemy" && card.isKing
+  );
 
   // Mapping dari type ke card image path
   const getCardImagePath = (type) => {
@@ -31,14 +39,31 @@ const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
     return cardMap[type] || "";
   };
 
-  // Render card deck dengan maksimal 5 karakter
-  const renderCardDeck = (cards) => {
-    const maxCards = 5;
-    const emptySlots = maxCards - cards.length;
+  // Render card deck dengan king di slot pertama + maksimal 4 karakter recruited (total 5)
+  const renderCardDeck = (cards, kingCard, isPlayer) => {
+    const maxRecruitedCards = 4; // Max 4 recruited + 1 king = 5 total
+    const displayedCards = cards.slice(0, maxRecruitedCards);
+    const emptySlots = maxRecruitedCards - displayedCards.length;
+
+    // Tentukan gambar leader card berdasarkan king
+    const leaderCardImage =
+      kingCard?.cardData.name === "Roi"
+        ? "/Composants_2D/Cartes/leaders_Roi.jpg"
+        : "/Composants_2D/Cartes/leaders_Reine.jpg";
 
     return (
       <div className="grid grid-cols-5 gap-1 mt-2">
-        {cards.map((card, index) => (
+        {/* King Card - Always first slot, menggunakan gambar dari folder Cartes */}
+        <div className="relative w-10 h-14 rounded border-2 border-yellow-400 overflow-hidden shadow-md hover:scale-110 transition-transform ring-2 ring-yellow-300">
+          <img
+            src={leaderCardImage}
+            alt={kingCard?.cardData.name || "Leader"}
+            className="w-full h-full object-cover"
+          />
+        </div>
+
+        {/* Recruited Characters - Max 4 slots */}
+        {displayedCards.map((card, index) => (
           <div
             key={index}
             className="relative w-10 h-14 rounded border-2 border-[#d4af37]/50 overflow-hidden shadow-md hover:scale-110 transition-transform"
@@ -50,7 +75,8 @@ const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
             />
           </div>
         ))}
-        {/* Empty slots */}
+
+        {/* Empty slots - Fill remaining up to 4 */}
         {Array.from({ length: emptySlots }).map((_, index) => (
           <div
             key={`empty-${index}`}
@@ -88,7 +114,7 @@ const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
             </span>
           </div>
         </div>
-        {renderCardDeck(playerCards)}
+        {renderCardDeck(playerCards, playerKing)}
       </div>
 
       <div className="h-px bg-gradient-to-r from-transparent via-[#d4af37]/50 to-transparent my-4"></div>
@@ -118,7 +144,7 @@ const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
             </span>
           </div>
         </div>
-        {renderCardDeck(enemyCards)}
+        {renderCardDeck(enemyCards, enemyKing)}
       </div>
 
       <div className="h-px bg-gradient-to-r from-transparent via-[#d4af37]/50 to-transparent my-4"></div>
