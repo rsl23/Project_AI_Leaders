@@ -14,6 +14,7 @@ const GameBoard = ({
   onPositionClick,
   recruitmentPhase,
   activeAbilityUsed,
+  validMovePositions,
 }) => {
   const boardRef = useRef(null);
   const [scale, setScale] = useState({ x: 1, y: 1 });
@@ -167,6 +168,7 @@ const GameBoard = ({
           const positionType = getPositionType(pos.id, cardAtPosition?.isKing);
           const isSelectingRecruitmentPosition =
             recruitmentPhase?.selectingPosition;
+          const isValidMovePosition = validMovePositions?.includes(pos.id);
 
           return (
             <div
@@ -206,6 +208,11 @@ const GameBoard = ({
                 pos.zone === turn &&
                 !cardAtPosition
                   ? "animate-pulse ring-4 ring-green-400 bg-green-900/40 cursor-pointer"
+                  : ""
+              }
+              ${
+                isValidMovePosition && !cardAtPosition
+                  ? "animate-pulse ring-4 ring-blue-400 bg-blue-900/50 cursor-pointer shadow-lg shadow-blue-500/50"
                   : ""
               }
               ${

@@ -26,9 +26,14 @@ const Arena = () => {
   const [selectedCharacter, setSelectedCharacter] = useState(null);
   const [characterActions, setCharacterActions] = useState({});
   const [activeAbilityUsed, setActiveAbilityUsed] = useState({}); // Track active ability usage
+  const [validMovePositions, setValidMovePositions] = useState([]); // Track valid positions for selected character
   const [currentPhase, setCurrentPhase] = useState("action"); // "action" | "recruitment"
   const [recruitmentCount, setRecruitmentCount] = useState(1); // Untuk pemain kedua di turn pertama
   const [secondPlayerUsedBonus, setSecondPlayerUsedBonus] = useState(false);
+
+  // === ACTIVE ABILITY STATE ===
+  const [abilityMode, setAbilityMode] = useState(null); // Track which ability is being used
+  const [acrobateJumpCount, setAcrobateJumpCount] = useState(0); // Track number of jumps for Acrobate
 
   // === RECRUITMENT STATE ===
   const [recruitmentPhase, setRecruitmentPhase] = useState({
@@ -178,27 +183,164 @@ const Arena = () => {
     const maxCols = { 1: 4, 2: 5, 3: 6, 4: 7, 5: 6, 6: 5, 7: 4 };
     const adjacent = [];
 
-    // Horizontal
+    // Horizontal neighbors (left and right in same row)
     if (col > 1) adjacent.push(`hex-${row}-${col - 1}`);
     if (col < maxCols[row]) adjacent.push(`hex-${row}-${col + 1}`);
 
-    // Vertical & diagonal
-    const neighbors = [
-      { r: row - 1, c: col }, // up
-      { r: row - 1, c: col - 1 }, // up-left
-      { r: row - 1, c: col + 1 }, // up-right
-      { r: row + 1, c: col }, // down
-      { r: row + 1, c: col - 1 }, // down-left
-      { r: row + 1, c: col + 1 }, // down-right
-    ];
+    // Vertical & diagonal neighbors - depends on row parity
+    // For this hexagonal layout (rotated), we need to check actual adjacency
+    const neighbors = [];
+
+    // Row above (row - 1)
+    if (row > 1) {
+      const prevRowCols = maxCols[row - 1];
+      // Check which columns in previous row are adjacent
+      if (row <= 4) {
+        // Rows 1-4: expanding rows
+        // Previous row has fewer columns, adjacent are at col-1, col
+        if (col - 1 >= 1 && col - 1 <= prevRowCols)
+          neighbors.push({ r: row - 1, c: col - 1 });
+        if (col >= 1 && col <= prevRowCols)
+          neighbors.push({ r: row - 1, c: col });
+      } else {
+        // Rows 5-7: contracting rows
+        // Previous row has more columns, adjacent are at col, col+1
+        if (col >= 1 && col <= prevRowCols)
+          neighbors.push({ r: row - 1, c: col });
+        if (col + 1 >= 1 && col + 1 <= prevRowCols)
+          neighbors.push({ r: row - 1, c: col + 1 });
+      }
+    }
+
+    // Row below (row + 1)
+    if (row < 7) {
+      const nextRowCols = maxCols[row + 1];
+      // Check which columns in next row are adjacent
+      if (row < 4) {
+        // Rows 1-3: expanding rows
+        // Next row has more columns, adjacent are at col, col+1
+        if (col >= 1 && col <= nextRowCols)
+          neighbors.push({ r: row + 1, c: col });
+        if (col + 1 >= 1 && col + 1 <= nextRowCols)
+          neighbors.push({ r: row + 1, c: col + 1 });
+      } else {
+        // Rows 4-6: contracting rows
+        // Next row has fewer columns, adjacent are at col-1, col
+        if (col - 1 >= 1 && col - 1 <= nextRowCols)
+          neighbors.push({ r: row + 1, c: col - 1 });
+        if (col >= 1 && col <= nextRowCols)
+          neighbors.push({ r: row + 1, c: col });
+      }
+    }
 
     neighbors.forEach(({ r, c }) => {
-      if (r >= 1 && r <= 7 && c >= 1 && c <= (maxCols[r] || 0)) {
-        adjacent.push(`hex-${r}-${c}`);
-      }
+      adjacent.push(`hex-${r}-${c}`);
     });
 
     return adjacent;
+  };
+
+  // === HELPER: Get direction vector between two positions ===
+  const getDirection = (fromPos, toPos) => {
+    const [_, fromRow, fromCol] = fromPos.split("-").map(Number);
+    const [__, toRow, toCol] = toPos.split("-").map(Number);
+    return {
+      deltaRow: toRow - fromRow,
+      deltaCol: toCol - fromCol,
+    };
+  };
+
+  // === HELPER: Get next position in same direction ===
+  const getNextPositionInDirection = (currentPos, direction) => {
+    const [_, row, col] = currentPos.split("-").map(Number);
+    const maxCols = { 1: 4, 2: 5, 3: 6, 4: 7, 5: 6, 6: 5, 7: 4 };
+
+    // For hexagonal board, we need to apply the same offset pattern
+    // Get the target row first
+    const newRow = row + direction.deltaRow;
+
+    // Check if new row is valid
+    if (newRow < 1 || newRow > 7) return null;
+
+    // Calculate new column based on the direction pattern
+    // For hexagonal, the column offset depends on which rows we're transitioning between
+    let newCol = col + direction.deltaCol;
+
+    // Adjust column based on hexagonal geometry
+    // If moving across expansion/contraction boundary, adjust column offset
+    if (direction.deltaRow !== 0) {
+      // Moving vertically - need to consider hexagonal offset
+      const fromExpanding = row <= 4;
+      const toExpanding = newRow <= 4;
+
+      // If transitioning from expanding to contracting or vice versa at row 4
+      if (fromExpanding !== toExpanding && (row === 4 || newRow === 4)) {
+        // No additional adjustment needed for straight line
+        // The deltaCol already accounts for the pattern
+      }
+    }
+
+    // Check if new column is valid for the new row
+    if (newCol < 1 || newCol > (maxCols[newRow] || 0)) return null;
+
+    return `hex-${newRow}-${newCol}`;
+  };
+
+  // === HELPER: Check if three positions are in a straight line ===
+  const isInStraightLine = (pos1, pos2, pos3) => {
+    const [_, row1, col1] = pos1.split("-").map(Number);
+    const [__, row2, col2] = pos2.split("-").map(Number);
+    const [___, row3, col3] = pos3.split("-").map(Number);
+
+    // Get direction from pos1 to pos2
+    const dir12 = {
+      deltaRow: row2 - row1,
+      deltaCol: col2 - col1,
+    };
+
+    // Get direction from pos2 to pos3
+    const dir23 = {
+      deltaRow: row3 - row2,
+      deltaCol: col3 - col2,
+    };
+
+    // Check if directions are the same (straight line)
+    return (
+      dir12.deltaRow === dir23.deltaRow && dir12.deltaCol === dir23.deltaCol
+    );
+  };
+
+  // === HELPER: Calculate valid jump positions for Acrobate ===
+  const getAcrobateJumpPositions = (characterPos) => {
+    const validJumps = [];
+    const adjacentPositions = getAdjacentPositions(characterPos);
+
+    // For each adjacent position that has a character
+    adjacentPositions.forEach((adjPos) => {
+      const hasCharacter = placedCards.find(
+        (card) => card.positionId === adjPos
+      );
+
+      if (hasCharacter) {
+        // Calculate direction from character to adjacent
+        const direction = getDirection(characterPos, adjPos);
+
+        // Get position beyond the adjacent character (landing position)
+        const landingPos = getNextPositionInDirection(adjPos, direction);
+
+        // Verify it's actually in a straight line (extra validation)
+        if (landingPos && isInStraightLine(characterPos, adjPos, landingPos)) {
+          const isOccupied = placedCards.find(
+            (card) => card.positionId === landingPos
+          );
+          if (!isOccupied) {
+            validJumps.push(landingPos);
+          }
+        }
+      }
+    });
+
+    return validJumps;
   };
 
   // TEST FUNCTION OTOMATIS
@@ -232,6 +374,8 @@ const Arena = () => {
     setCurrentPhase("action");
     setCharacterActions({});
     setActiveAbilityUsed({}); // Reset active ability usage for new action phase
+    setAbilityMode(null); // Reset ability mode
+    setAcrobateJumpCount(0); // Reset jump count
     setSelectedCharacter(null);
     setSelectedCard(null);
     setRecruitmentCount(1);
@@ -250,6 +394,7 @@ const Arena = () => {
 
     // Clear selected character
     setSelectedCharacter(null);
+    setValidMovePositions([]); // Clear valid positions
 
     // Langsung ke recruitment phase
     setCurrentPhase("recruitment");
@@ -275,6 +420,30 @@ const Arena = () => {
       return;
     }
 
+    // === ACROBATE ABILITY: Jump over adjacent characters ===
+    if (characterType === "Acrobate") {
+      // Calculate valid jump positions
+      const jumpPositions = getAcrobateJumpPositions(
+        selectedCharacter.positionId
+      );
+
+      if (jumpPositions.length === 0) {
+        alert(
+          "Tidak ada posisi valid untuk melompat! Harus ada karakter adjacent untuk dilompati."
+        );
+        return;
+      }
+
+      // Set ability mode and show valid jump positions
+      setAbilityMode("acrobate_jump");
+      setAcrobateJumpCount(0); // Reset jump counter
+      setValidMovePositions(jumpPositions);
+
+      // Don't mark as used yet - will mark after jumps are complete
+      return;
+    }
+
+    // === DEFAULT: Mark ability as used for other characters ===
     // Mark ability as used
     setActiveAbilityUsed({
       ...activeAbilityUsed,
@@ -289,8 +458,9 @@ const Arena = () => {
 
     // Deselect character
     setSelectedCharacter(null);
+    setValidMovePositions([]); // Clear valid positions after using ability
 
-    // TODO: Implement specific active ability logic for each character
+    // TODO: Implement specific active ability logic for other characters
 
     // Check if all characters have acted
     setTimeout(() => {
@@ -371,6 +541,90 @@ const Arena = () => {
   const handleBattlePositionClick = (position) => {
     if (gamePhase !== "battle" || currentPhase !== "action") return;
 
+    // === HANDLE ACROBATE JUMP MODE ===
+    if (abilityMode === "acrobate_jump" && selectedCharacter) {
+      // Check if clicked position is valid jump position
+      if (!validMovePositions.includes(position.id)) {
+        alert("Pilih posisi jump yang valid (ditandai dengan ring biru)!");
+        return;
+      }
+
+      // Move character to jump position
+      const newPlacedCards = placedCards.map((card) =>
+        card.positionId === selectedCharacter.positionId
+          ? { ...card, positionId: position.id }
+          : card
+      );
+      setPlacedCards(newPlacedCards);
+
+      // Update selected character position
+      const updatedCharacter = {
+        ...selectedCharacter,
+        positionId: position.id,
+      };
+      setSelectedCharacter(updatedCharacter);
+
+      // Increment jump count
+      const newJumpCount = acrobateJumpCount + 1;
+      setAcrobateJumpCount(newJumpCount);
+
+      // Check if can do another jump (max 2 jumps)
+      if (newJumpCount < 2) {
+        // Calculate new jump positions from new location
+        const newJumpPositions = getAcrobateJumpPositions(position.id);
+
+        if (newJumpPositions.length > 0) {
+          // Ask if player wants to jump again
+          const jumpAgain = window.confirm(
+            `Jump ${newJumpCount}/2 selesai. Lakukan jump lagi? (Cancel untuk selesai)`
+          );
+
+          if (jumpAgain) {
+            setValidMovePositions(newJumpPositions);
+            return; // Continue jump mode
+          }
+        }
+      }
+
+      // Finish ability - mark as used
+      setActiveAbilityUsed({
+        ...activeAbilityUsed,
+        [selectedCharacter.cardData.type]: true,
+      });
+      setCharacterActions({
+        ...characterActions,
+        [selectedCharacter.cardData.type]: true,
+      });
+
+      // Reset ability mode
+      setAbilityMode(null);
+      setAcrobateJumpCount(0);
+      setSelectedCharacter(null);
+      setValidMovePositions([]);
+
+      // Check win condition and auto-advance
+      setTimeout(() => checkWinCondition(), 100);
+      setTimeout(() => {
+        const currentPlayerCharacters = newPlacedCards.filter(
+          (card) => card.owner === turn
+        );
+        const newActions = {
+          ...characterActions,
+          [updatedCharacter.cardData.type]: true,
+        };
+        const allCharactersActed = currentPlayerCharacters.every(
+          (character) => newActions[character.cardData.type]
+        );
+
+        if (allCharactersActed && currentPlayerCharacters.length > 0) {
+          setCurrentPhase("recruitment");
+          checkSkipRecruitment();
+        }
+      }, 200);
+
+      return;
+    }
+
     // 1. Cek jika klik karakter sendiri → select
     const clickedCharacter = placedCards.find(
       (card) => card.positionId === position.id && card.owner === turn
@@ -382,6 +636,16 @@ const Arena = () => {
       !characterActions[clickedCharacter.cardData.type]
     ) {
       setSelectedCharacter(clickedCharacter);
+
+      // Calculate and set valid move positions (adjacent empty positions)
+      const adjacentPositions = getAdjacentPositions(
+        clickedCharacter.positionId
+      );
+      const emptyAdjacentPositions = adjacentPositions.filter(
+        (posId) => !placedCards.find((card) => card.positionId === posId)
+      );
+      setValidMovePositions(emptyAdjacentPositions);
+
       return;
     }
 
@@ -429,6 +693,7 @@ const Arena = () => {
 
         setCharacterActions(newActions);
         setSelectedCharacter(null);
+        setValidMovePositions([]); // Clear valid positions after move
 
         setTimeout(() => checkWinCondition(), 100);
 
@@ -455,6 +720,7 @@ const Arena = () => {
     // 3. Jika klik karakter yang sama → deselect
     if (selectedCharacter && clickedCharacter === selectedCharacter) {
       setSelectedCharacter(null);
+      setValidMovePositions([]); // Clear valid positions when deselecting
     }
   };
 
@@ -757,6 +1023,7 @@ const Arena = () => {
         onPositionClick={handlePositionClick}
         recruitmentPhase={recruitmentPhase} // Pass recruitment phase ke GameBoard
         activeAbilityUsed={activeAbilityUsed} // Pass active ability usage state
+        validMovePositions={validMovePositions} // Pass valid positions for highlighting
       />
 
       <div className="absolute top-4 translate-x-150 z-20 bg-black/80 px-6 py-3 rounded-lg border-2 border-yellow-400">
@@ -786,7 +1053,19 @@ const Arena = () => {
 
         {gamePhase === "battle" && currentPhase === "action" && (
           <div className="mt-2">
-            {selectedCharacter && (
+            {/* Acrobate Jump Mode Indicator */}
+            {abilityMode === "acrobate_jump" && (
+              <div className="mb-2 p-2 bg-purple-900/60 border border-purple-400 rounded">
+                <p className="text-purple-300 text-sm font-bold">
+                  🤸 Acrobate Jump Mode
+                </p>
+                <p className="text-purple-200 text-xs">
+                  Jump: {acrobateJumpCount}/2 - Click posisi jump yang valid
+                </p>
+              </div>
+            )}
+
+            {selectedCharacter && !abilityMode && (
               <p className="text-green-400 text-sm mt-1">
                 Selected: {selectedCharacter.cardData.type} - Click adjacent
                 empty space to move
@@ -804,6 +1083,7 @@ const Arena = () => {
 
             {/* Use Active Ability Button - Show only for selected Active characters */}
             {selectedCharacter &&
+              !abilityMode &&
               characterInfo[selectedCharacter.cardData.type]?.category ===
                 "Active" && (
                 <button
@@ -822,12 +1102,14 @@ const Arena = () => {
               )}
 
             {/* End Action Phase Button */}
-            <button
-              onClick={handleEndActionPhase}
-              className="mt-3 w-full px-4 py-2 bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-500 hover:to-yellow-600 text-white font-bold rounded-lg border-2 border-yellow-400 shadow-lg transition-all duration-300 hover:scale-105"
-            >
-              End Action Phase
-            </button>
+            {!abilityMode && (
+              <button
+                onClick={handleEndActionPhase}
+                className="mt-3 w-full px-4 py-2 bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-500 hover:to-yellow-600 text-white font-bold rounded-lg border-2 border-yellow-400 shadow-lg transition-all duration-300 hover:scale-105"
+              >
+                End Action Phase
+              </button>
+            )}
           </div>
         )}
 
@@ -845,12 +1127,11 @@ const Arena = () => {
                   : "Pilih kartu untuk recruit"}
               </p>
             )}
-            {/* TOMBOL SKIP DIHAPUS SESUAI CATATAN */}
           </div>
         )}
       </div>
 
-      <div className="absolute right-8 top-1/2 -translate-y-1/2 z-10">
+      <div className="absolute right-8 top-3/5 -translate-y-1/2 z-10">
         <GameInfo
           placedCards={placedCards}
           turn={turn}
