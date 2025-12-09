@@ -1,0 +1,515 @@
+// src/utils/skillHandlers.js
+import * as SkillManager from './skillManager';
+
+// ============================================
+// ABILITY INITIALIZATION HANDLERS
+// ============================================
+
+export const handleAcrobateAbility = (character, placedCards, boardConfig) => {
+    const jumpPositions = SkillManager.getAcrobateJumpPositions(
+        character.positionId,
+        placedCards,
+        boardConfig
+    );
+
+    if (jumpPositions.length === 0) {
+        throw new Error("Tidak ada posisi valid untuk melompat! Harus ada karakter adjacent untuk dilompati.");
+    }
+
+    return {
+        abilityMode: "acrobate_jump",
+        validMovePositions: jumpPositions,
+        abilityData: { jumpCount: 0 }
+    };
+};
+
+export const handleVizirAbility = (character, placedCards, boardConfig) => {
+    const validMoves = SkillManager.getVizirValidMoves(
+        character.positionId,
+        placedCards,
+        boardConfig
+    );
+
+    if (validMoves.length === 0) {
+        throw new Error("Tidak ada posisi valid untuk move 2 space!");
+    }
+
+    return {
+        abilityMode: "vizir_move",
+        validMovePositions: validMoves
+    };
+};
+
+export const handleCogneurAbility = (character, placedCards, turn, boardConfig) => {
+    const adjacentEnemies = SkillManager.getAdjacentPositions(character.positionId, boardConfig)
+        .filter(pos => {
+            const char = placedCards.find(c => c.positionId === pos);
+            return char && char.owner !== turn;
+        });
+
+    if (adjacentEnemies.length === 0) {
+        throw new Error("Tidak ada musuh adjacent!");
+    }
+
+    return {
+        abilityMode: "cogneur_select_enemy",
+        validMovePositions: adjacentEnemies
+    };
+};
+
+export const handleGardeRoyalAbility = (character, placedCards, turn, boardConfig) => {
+    const leader = placedCards.find(c => c.owner === turn && c.isKing);
+    if (!leader) {
+        throw new Error("Leader tidak ditemukan!");
+    }
+
+    const teleportPositions = SkillManager.getGardeRoyalTeleportPositions(
+        leader.positionId,
+        placedCards,
+        boardConfig
+    );
+
+    if (teleportPositions.length === 0) {
+        throw new Error("Tidak ada space kosong adjacent ke Leader!");
+    }
+
+    return {
+        abilityMode: "garde_teleport",
+        validMovePositions: teleportPositions
+    };
+};
+
+export const handleLanceGrappinAbility = (character, placedCards, boardConfig) => {
+    const targets = SkillManager.getLanceGrappinTargets(
+        character.positionId,
+        placedCards,
+        boardConfig
+    );
+
+    if (targets.length === 0) {
+        throw new Error("Tidak ada karakter yang visible dalam garis lurus!");
+    }
+
+    return {
+        abilityMode: "lance_select_target",
+        validMovePositions: targets
+    };
+};
+
+export const handleManipulatorAbility = (character, placedCards, turn, boardConfig) => {
+    const targets = SkillManager.getManipulatorTargets(
+        character.positionId,
+        placedCards,
+        turn,
+        boardConfig
+    );
+
+    if (targets.length === 0) {
+        throw new Error("Tidak ada musuh non-adjacent yang visible!");
+    }
+
+    return {
+        abilityMode: "manipulator_select_target",
+        validMovePositions: targets
+    };
+};
+
+export const handleRodeuseAbility = (character, placedCards, turn, boardConfig) => {
+    const validMoves = SkillManager.getRodeuseValidMoves(
+        character.positionId,
+        placedCards,
+        turn,
+        boardConfig
+    );
+
+    if (validMoves.length === 0) {
+        throw new Error("Tidak ada space yang non-adjacent ke musuh!");
+    }
+
+    return {
+        abilityMode: "rodeuse_move",
+        validMovePositions: validMoves
+    };
+};
+
+export const handleTavernierAbility = (character, placedCards, turn, boardConfig) => {
+    const allies = SkillManager.getTavernierAllies(
+        character.positionId,
+        placedCards,
+        turn,
+        boardConfig
+    );
+
+    if (allies.length === 0) {
+        throw new Error("Tidak ada sekutu adjacent!");
+    }
+
+    return {
+        abilityMode: "tavernier_select_ally",
+        validMovePositions: allies
+    };
+};
+
+export const handleIllusionistAbility = (character, placedCards, boardConfig) => {
+    const targets = SkillManager.getIllusionistTargets(
+        character.positionId,
+        placedCards,
+        boardConfig
+    );
+
+    if (targets.length === 0) {
+        throw new Error("Tidak ada karakter non-adjacent yang visible!");
+    }
+
+    return {
+        abilityMode: "illusionist_select_target",
+        validMovePositions: targets
+    };
+};
+
+// ============================================
+// ABILITY EXECUTION HANDLERS
+// ============================================
+
+export const executeAcrobateJump = (character, targetPos, placedCards, abilityData, boardConfig) => {
+    // Move character to jump position
+    const newPlacedCards = placedCards.map(card =>
+        card.positionId === character.positionId
+            ? { ...card, positionId: targetPos }
+            : card
+    );
+
+    // Increment jump count
+    const newJumpCount = (abilityData.jumpCount || 0) + 1;
+
+    // Calculate next possible jumps
+    let nextJumpPositions = [];
+    if (newJumpCount < 2) {
+        nextJumpPositions = SkillManager.getAcrobateJumpPositions(targetPos, newPlacedCards, boardConfig);
+    }
+
+    return {
+        newPlacedCards,
+        abilityData: { ...abilityData, jumpCount: newJumpCount },
+        shouldContinue: newJumpCount < 2 && nextJumpPositions.length > 0,
+        nextValidPositions: nextJumpPositions
+    };
+};
+
+export const executeCogneurPush = (cogneurPos, enemyPos, pushPos, placedCards, boardConfig) => {
+    let newPlacedCards = placedCards.map(card =>
+        card.positionId === enemyPos
+            ? { ...card, positionId: pushPos }
+            : card
+    );
+
+    // Move Cogneur to enemy's original position
+    newPlacedCards = newPlacedCards.map(card =>
+        card.positionId === cogneurPos
+            ? { ...card, positionId: enemyPos }
+            : card
+    );
+
+    return newPlacedCards;
+};
+
+export const executeGardeRoyalTeleport = (character, teleportPos, placedCards, boardConfig) => {
+    // Move character to teleport position
+    let newPlacedCards = placedCards.map(card =>
+        card.positionId === character.positionId
+            ? { ...card, positionId: teleportPos }
+            : card
+    );
+
+    // Check for additional move
+    const adjacentPositions = SkillManager.getAdjacentPositions(teleportPos, boardConfig);
+    const emptyAdjacent = adjacentPositions.filter(pos =>
+        !newPlacedCards.find(c => c.positionId === pos)
+    );
+
+    return {
+        newPlacedCards,
+        canMoveAgain: emptyAdjacent.length > 0,
+        additionalMovePositions: emptyAdjacent
+    };
+};
+
+export const executeLanceGrappin = (lancePos, targetPos, shouldPush, placedCards, boardConfig) => {
+    const direction = SkillManager.getDirection(lancePos, targetPos);
+    let newPlacedCards = [...placedCards];
+
+    if (shouldPush) {
+        // Option 1: Move to target position (push through)
+        const newLancePos = targetPos;
+
+        // Find empty position beyond target in same direction
+        let pushPos = SkillManager.getNextPositionInDirection(targetPos, direction, boardConfig);
+        while (pushPos && newPlacedCards.find(c => c.positionId === pushPos)) {
+            pushPos = SkillManager.getNextPositionInDirection(pushPos, direction, boardConfig);
+        }
+
+        if (pushPos) {
+            // Move target forward
+            newPlacedCards = newPlacedCards.map(card =>
+                card.positionId === targetPos
+                    ? { ...card, positionId: pushPos }
+                    : card
+            );
+        }
+
+        // Move LanceGrappin to target position
+        newPlacedCards = newPlacedCards.map(card =>
+            card.positionId === lancePos
+                ? { ...card, positionId: newLancePos }
+                : card
+        );
+    } else {
+        // Option 2: Drag target to be adjacent
+        const adjacentPositions = SkillManager.getAdjacentPositions(lancePos, boardConfig);
+
+        // Find which adjacent position is in the direction of target
+        const dragPos = adjacentPositions.find(pos => {
+            const dirToPos = SkillManager.getDirection(lancePos, pos);
+            return dirToPos.deltaRow === direction.deltaRow &&
+                dirToPos.deltaCol === direction.deltaCol;
+        });
+
+        if (dragPos && !newPlacedCards.find(c => c.positionId === dragPos)) {
+            // Move target to adjacent position
+            newPlacedCards = newPlacedCards.map(card =>
+                card.positionId === targetPos
+                    ? { ...card, positionId: dragPos }
+                    : card
+            );
+        }
+    }
+
+    return newPlacedCards;
+};
+
+export const executeIllusionistSwitch = (illusionistPos, targetPos, placedCards) => {
+    const newPlacedCards = placedCards.map(card => {
+        if (card.positionId === illusionistPos) {
+            return { ...card, positionId: targetPos };
+        }
+        if (card.positionId === targetPos) {
+            return { ...card, positionId: illusionistPos };
+        }
+        return card;
+    });
+
+    return newPlacedCards;
+};
+
+// ============================================
+// WIN CONDITION CHECKS
+// ============================================
+
+export const checkAssassinCapture = (kingPos, placedCards, attackerOwner, boardConfig) => {
+    if (!kingPos) return false;
+
+    const assassinAdjacent = placedCards.find(p =>
+        p.owner === attackerOwner &&
+        p.cardData.type === "Assassin" &&
+        SkillManager.isAdjacent(p.positionId, kingPos, boardConfig)
+    );
+
+    return !!assassinAdjacent;
+};
+
+export const checkArcherCapture = (kingPos, placedCards, attackerOwner, boardConfig) => {
+    if (!kingPos) return false;
+
+    const archers = placedCards.filter(p =>
+        p.owner === attackerOwner && p.cardData.type === "Archer"
+    );
+
+    for (const archer of archers) {
+        // Check if Archer is exactly 2 spaces away in straight line
+        const distance = SkillManager.getDistanceInStraightLine(archer.positionId, kingPos);
+        if (distance === 2) {
+            // Check line of sight
+            if (SkillManager.isVisibleInStraightLine(archer.positionId, kingPos, placedCards, boardConfig)) {
+                // Check if there's at least one other adjacent ally to king
+                const otherAllies = placedCards.filter(p =>
+                    p.owner === attackerOwner &&
+                    p.cardData.type !== "Archer" &&
+                    SkillManager.isAdjacent(p.positionId, kingPos, boardConfig)
+                );
+
+                if (otherAllies.length >= 1) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+};
+
+export const checkNormalCapture = (kingPos, placedCards, attackerOwner, boardConfig) => {
+    if (!kingPos) return false;
+
+    const attackersAdjacent = placedCards.filter(p =>
+        p.owner === attackerOwner &&
+        SkillManager.isAdjacent(p.positionId, kingPos, boardConfig) &&
+        p.cardData.type !== "Archer" // Archer doesn't count when adjacent
+    );
+
+    return attackersAdjacent.length >= 2;
+};
+
+export const checkSurrounded = (kingPos, placedCards, boardConfig) => {
+    if (!kingPos) return false;
+
+    const allAdjacent = SkillManager.getAdjacentPositions(kingPos, boardConfig);
+    return allAdjacent.every(pos => placedCards.find(p => p.positionId === pos));
+};
+
+// ============================================
+// PASSIVE ABILITY CHECKS
+// ============================================
+
+export const checkJailerEffect = (characterPos, placedCards, turn, boardConfig) => {
+    // Check if there's a Jailer adjacent to this character
+    const adjacentPositions = SkillManager.getAdjacentPositions(characterPos, boardConfig);
+    const adjacentJailers = adjacentPositions.filter(pos => {
+        const char = placedCards.find(c => c.positionId === pos);
+        return char && char.cardData.type === "Geolier" && char.owner !== turn;
+    });
+
+    return adjacentJailers.length > 0;
+};
+
+export const checkProtectorEffect = (characterPos, placedCards, turn, boardConfig) => {
+    // Check if character is adjacent to Protector of same owner
+    const adjacentPositions = SkillManager.getAdjacentPositions(characterPos, boardConfig);
+    const adjacentProtectors = adjacentPositions.filter(pos => {
+        const char = placedCards.find(c => c.positionId === pos);
+        return char && char.cardData.type === "Protector" && char.owner === turn;
+    });
+
+    return adjacentProtectors.length > 0;
+};
+
+export const checkVizirEffect = (leaderPos, placedCards, turn) => {
+    // Check if Vizir exists on the board for this player
+    const vizir = placedCards.find(p =>
+        p.cardData.type === "Vizir" && p.owner === turn
+    );
+
+    return !!vizir;
+};
+
+// ============================================
+// SPECIAL ABILITIES
+// ============================================
+
+export const handleHermitCubRecruitment = () => {
+    // Hermit & Cub are recruited together
+    return {
+        abilityMode: "hermit_cub_recruitment",
+        abilityData: { characters: ["VieilOurs", "Cub"], count: 2 }
+    };
+};
+
+export const handleNemesisMovement = (nemesisPos, opponentLeaderPos, placedCards, boardConfig) => {
+    // Nemesis must move 2 spaces towards opponent Leader when Leader moves
+    if (!nemesisPos || !opponentLeaderPos) return null;
+
+    const direction = SkillManager.getDirection(nemesisPos, opponentLeaderPos);
+
+    // Try to move 2 spaces in that direction
+    let firstMove = SkillManager.getNextPositionInDirection(nemesisPos, direction, boardConfig);
+    let secondMove = firstMove ? SkillManager.getNextPositionInDirection(firstMove, direction, boardConfig) : null;
+
+    // Check if positions are valid and empty
+    const validPositions = [];
+
+    if (firstMove && !placedCards.find(c => c.positionId === firstMove)) {
+        validPositions.push(firstMove);
+    }
+
+    if (secondMove && !placedCards.find(c => c.positionId === secondMove)) {
+        validPositions.push(secondMove);
+    }
+
+    return {
+        validPositions,
+        canMove: validPositions.length > 0
+    };
+};
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+export const getCharacterAdjacentEnemies = (characterPos, placedCards, turn, boardConfig) => {
+    const adjacentPositions = SkillManager.getAdjacentPositions(characterPos, boardConfig);
+    return adjacentPositions.filter(pos => {
+        const char = placedCards.find(c => c.positionId === pos);
+        return char && char.owner !== turn;
+    });
+};
+
+export const getCharacterAdjacentAllies = (characterPos, placedCards, turn, boardConfig) => {
+    const adjacentPositions = SkillManager.getAdjacentPositions(characterPos, boardConfig);
+    return adjacentPositions.filter(pos => {
+        const char = placedCards.find(c => c.positionId === pos);
+        return char && char.owner === turn;
+    });
+};
+
+export const getAvailableMovePositions = (characterPos, placedCards, boardConfig) => {
+    const adjacentPositions = SkillManager.getAdjacentPositions(characterPos, boardConfig);
+    return adjacentPositions.filter(pos => !placedCards.find(c => c.positionId === pos));
+};
+
+export const isCharacterVisible = (fromPos, toPos, placedCards, boardConfig) => {
+    return SkillManager.isVisibleInStraightLine(fromPos, toPos, placedCards, boardConfig);
+};
+
+// ============================================
+// EXPORT ALL FUNCTIONS
+// ============================================
+
+export default {
+    // Ability Initialization
+    handleAcrobateAbility,
+    handleVizirAbility,
+    handleCogneurAbility,
+    handleGardeRoyalAbility,
+    handleLanceGrappinAbility,
+    handleManipulatorAbility,
+    handleRodeuseAbility,
+    handleTavernierAbility,
+    handleIllusionistAbility,
+
+    // Ability Execution
+    executeAcrobateJump,
+    executeCogneurPush,
+    executeGardeRoyalTeleport,
+    executeLanceGrappin,
+    executeIllusionistSwitch,
+
+    // Win Condition Checks
+    checkAssassinCapture,
+    checkArcherCapture,
+    checkNormalCapture,
+    checkSurrounded,
+
+    // Passive Ability Checks
+    checkJailerEffect,
+    checkProtectorEffect,
+    checkVizirEffect,
+
+    // Special Abilities
+    handleHermitCubRecruitment,
+    handleNemesisMovement,
+
+    // Helper Functions
+    getCharacterAdjacentEnemies,
+    getCharacterAdjacentAllies,
+    getAvailableMovePositions,
+    isCharacterVisible
+};

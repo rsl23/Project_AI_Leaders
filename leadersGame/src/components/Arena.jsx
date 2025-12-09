@@ -6,6 +6,11 @@ import GameBoard from "./GameBoard";
 import { Link } from "react-router-dom";
 import { characterInfo } from "../data/characterInfo";
 
+// Import skill modules
+import * as SkillManager from "../skill/skillManager";
+import * as SkillHandlers from "../skill/skillHandlers";
+import * as SkillConstants from "../skill/skillConstants";
+
 const Arena = () => {
   const audioRef = useRef(null);
 
@@ -33,7 +38,7 @@ const Arena = () => {
 
   // === ACTIVE ABILITY STATE ===
   const [abilityMode, setAbilityMode] = useState(null); // Track which ability is being used
-  const [acrobateJumpCount, setAcrobateJumpCount] = useState(0); // Track number of jumps for Acrobate
+  const [abilityData, setAbilityData] = useState({}); // Store additional ability data
 
   // === RECRUITMENT STATE ===
   const [recruitmentPhase, setRecruitmentPhase] = useState({
@@ -133,7 +138,7 @@ const Arena = () => {
       },
     ]);
 
-    // LANGSUNG MULAI BATTLE PHASE - TAMBAH INI
+    // LANGSUNG MULAI BATTLE PHASE
     setGamePhase("battle");
     setCurrentPhase("action");
   }, []);
@@ -178,195 +183,6 @@ const Arena = () => {
     }
   };
 
-  const getAdjacentPositions = (positionId) => {
-    const [_, row, col] = positionId.split("-").map(Number);
-    const maxCols = { 1: 4, 2: 5, 3: 6, 4: 7, 5: 6, 6: 5, 7: 4 };
-    const adjacent = [];
-
-    // Horizontal neighbors (left and right in same row)
-    if (col > 1) adjacent.push(`hex-${row}-${col - 1}`);
-    if (col < maxCols[row]) adjacent.push(`hex-${row}-${col + 1}`);
-
-    // Vertical & diagonal neighbors - depends on row parity
-    // For this hexagonal layout (rotated), we need to check actual adjacency
-    const neighbors = [];
-
-    // Row above (row - 1)
-    if (row > 1) {
-      const prevRowCols = maxCols[row - 1];
-      // Check which columns in previous row are adjacent
-      if (row <= 4) {
-        // Rows 1-4: expanding rows
-        // Previous row has fewer columns, adjacent are at col-1, col
-        if (col - 1 >= 1 && col - 1 <= prevRowCols)
-          neighbors.push({ r: row - 1, c: col - 1 });
-        if (col >= 1 && col <= prevRowCols)
-          neighbors.push({ r: row - 1, c: col });
-      } else {
-        // Rows 5-7: contracting rows
-        // Previous row has more columns, adjacent are at col, col+1
-        if (col >= 1 && col <= prevRowCols)
-          neighbors.push({ r: row - 1, c: col });
-        if (col + 1 >= 1 && col + 1 <= prevRowCols)
-          neighbors.push({ r: row - 1, c: col + 1 });
-      }
-    }
-
-    // Row below (row + 1)
-    if (row < 7) {
-      const nextRowCols = maxCols[row + 1];
-      // Check which columns in next row are adjacent
-      if (row < 4) {
-        // Rows 1-3: expanding rows
-        // Next row has more columns, adjacent are at col, col+1
-        if (col >= 1 && col <= nextRowCols)
-          neighbors.push({ r: row + 1, c: col });
-        if (col + 1 >= 1 && col + 1 <= nextRowCols)
-          neighbors.push({ r: row + 1, c: col + 1 });
-      } else {
-        // Rows 4-6: contracting rows
-        // Next row has fewer columns, adjacent are at col-1, col
-        if (col - 1 >= 1 && col - 1 <= nextRowCols)
-          neighbors.push({ r: row + 1, c: col - 1 });
-        if (col >= 1 && col <= nextRowCols)
-          neighbors.push({ r: row + 1, c: col });
-      }
-    }
-
-    neighbors.forEach(({ r, c }) => {
-      adjacent.push(`hex-${r}-${c}`);
-    });
-
-    return adjacent;
-  };
-
-  // === HELPER: Get direction vector between two positions ===
-  const getDirection = (fromPos, toPos) => {
-    const [_, fromRow, fromCol] = fromPos.split("-").map(Number);
-    const [__, toRow, toCol] = toPos.split("-").map(Number);
-    return {
-      deltaRow: toRow - fromRow,
-      deltaCol: toCol - fromCol,
-    };
-  };
-
-  // === HELPER: Get next position in same direction ===
-  const getNextPositionInDirection = (currentPos, direction) => {
-    const [_, row, col] = currentPos.split("-").map(Number);
-    const maxCols = { 1: 4, 2: 5, 3: 6, 4: 7, 5: 6, 6: 5, 7: 4 };
-
-    // For hexagonal board, we need to apply the same offset pattern
-    // Get the target row first
-    const newRow = row + direction.deltaRow;
-
-    // Check if new row is valid
-    if (newRow < 1 || newRow > 7) return null;
-
-    // Calculate new column based on the direction pattern
-    // For hexagonal, the column offset depends on which rows we're transitioning between
-    let newCol = col + direction.deltaCol;
-
-    // Adjust column based on hexagonal geometry
-    // If moving across expansion/contraction boundary, adjust column offset
-    if (direction.deltaRow !== 0) {
-      // Moving vertically - need to consider hexagonal offset
-      const fromExpanding = row <= 4;
-      const toExpanding = newRow <= 4;
-
-      // If transitioning from expanding to contracting or vice versa at row 4
-      if (fromExpanding !== toExpanding && (row === 4 || newRow === 4)) {
-        // No additional adjustment needed for straight line
-        // The deltaCol already accounts for the pattern
-      }
-    }
-
-    // Check if new column is valid for the new row
-    if (newCol < 1 || newCol > (maxCols[newRow] || 0)) return null;
-
-    return `hex-${newRow}-${newCol}`;
-  };
-
-  // === HELPER: Check if three positions are in a straight line ===
-  const isInStraightLine = (pos1, pos2, pos3) => {
-    const [_, row1, col1] = pos1.split("-").map(Number);
-    const [__, row2, col2] = pos2.split("-").map(Number);
-    const [___, row3, col3] = pos3.split("-").map(Number);
-
-    // Get direction from pos1 to pos2
-    const dir12 = {
-      deltaRow: row2 - row1,
-      deltaCol: col2 - col1,
-    };
-
-    // Get direction from pos2 to pos3
-    const dir23 = {
-      deltaRow: row3 - row2,
-      deltaCol: col3 - col2,
-    };
-
-    // Check if directions are the same (straight line)
-    return (
-      dir12.deltaRow === dir23.deltaRow && dir12.deltaCol === dir23.deltaCol
-    );
-  };
-
-  // === HELPER: Calculate valid jump positions for Acrobate ===
-  const getAcrobateJumpPositions = (characterPos) => {
-    const validJumps = [];
-    const adjacentPositions = getAdjacentPositions(characterPos);
-
-    // For each adjacent position that has a character
-    adjacentPositions.forEach((adjPos) => {
-      const hasCharacter = placedCards.find(
-        (card) => card.positionId === adjPos
-      );
-
-      if (hasCharacter) {
-        // Calculate direction from character to adjacent
-        const direction = getDirection(characterPos, adjPos);
-
-        // Get position beyond the adjacent character (landing position)
-        const landingPos = getNextPositionInDirection(adjPos, direction);
-
-        // Verify it's actually in a straight line (extra validation)
-        if (landingPos && isInStraightLine(characterPos, adjPos, landingPos)) {
-          const isOccupied = placedCards.find(
-            (card) => card.positionId === landingPos
-          );
-          if (!isOccupied) {
-            validJumps.push(landingPos);
-          }
-        }
-      }
-    });
-
-    return validJumps;
-  };
-
-  // TEST FUNCTION OTOMATIS
-  useEffect(() => {
-    // Auto test beberapa posisi penting saat component mount
-    if (gamePhase === "battle") {
-      console.log("🧪 AUTO TESTING ADJACENT POSITIONS:");
-
-      // Test hex-6-1 (masalah dari log)
-      const test61 = getAdjacentPositions("hex-6-1");
-      console.log("hex-6-1 adjacent:", test61);
-      console.log("Can move to hex-5-2:", test61.includes("hex-5-2"));
-
-      // Test beberapa posisi lain untuk verifikasi
-      const test44 = getAdjacentPositions("hex-4-4");
-      console.log("hex-4-4 adjacent:", test44, "count:", test44.length);
-
-      const test11 = getAdjacentPositions("hex-1-1");
-      console.log("hex-1-1 adjacent:", test11, "count:", test11.length);
-    }
-  }, [gamePhase]);
-
-  const isAdjacent = (pos1, pos2) => {
-    return getAdjacentPositions(pos1).includes(pos2);
-  };
-
   // === AUTO TURN SYSTEM ===
   const handleEndTurn = () => {
     if (gamePhase !== "battle") return;
@@ -375,7 +191,7 @@ const Arena = () => {
     setCharacterActions({});
     setActiveAbilityUsed({}); // Reset active ability usage for new action phase
     setAbilityMode(null); // Reset ability mode
-    setAcrobateJumpCount(0); // Reset jump count
+    setAbilityData({}); // Reset ability data
     setSelectedCharacter(null);
     setSelectedCard(null);
     setRecruitmentCount(1);
@@ -420,66 +236,72 @@ const Arena = () => {
       return;
     }
 
-    // === ACROBATE ABILITY: Jump over adjacent characters ===
-    if (characterType === "Acrobate") {
-      // Calculate valid jump positions
-      const jumpPositions = getAcrobateJumpPositions(
-        selectedCharacter.positionId
-      );
+    try {
+      let result;
+      const config = SkillConstants.BOARD_CONFIG;
 
-      if (jumpPositions.length === 0) {
-        alert(
-          "Tidak ada posisi valid untuk melompat! Harus ada karakter adjacent untuk dilompati."
-        );
-        return;
+      switch (characterType) {
+        case "Acrobate":
+          result = SkillHandlers.handleAcrobateAbility(selectedCharacter, placedCards, config);
+          break;
+        case "Cavalier":
+          result = SkillHandlers.handleVizirAbility(selectedCharacter, placedCards, config);
+          break;
+        case "Cogneur":
+          result = SkillHandlers.handleCogneurAbility(selectedCharacter, placedCards, turn, config);
+          break;
+        case "GardeRoyal":
+          result = SkillHandlers.handleGardeRoyalAbility(selectedCharacter, placedCards, turn, config);
+          break;
+        case "LanceGrappin":
+          result = SkillHandlers.handleLanceGrappinAbility(selectedCharacter, placedCards, config);
+          break;
+        case "Manipulator":
+          result = SkillHandlers.handleManipulatorAbility(selectedCharacter, placedCards, turn, config);
+          break;
+        case "Rodeuse":
+          result = SkillHandlers.handleRodeuseAbility(selectedCharacter, placedCards, turn, config);
+          break;
+        case "Tavernier":
+          result = SkillHandlers.handleTavernierAbility(selectedCharacter, placedCards, turn, config);
+          break;
+        case "Illusionist":
+          result = SkillHandlers.handleIllusionistAbility(selectedCharacter, placedCards, config);
+          break;
+        default:
+          // For characters without special active ability logic
+          setActiveAbilityUsed({
+            ...activeAbilityUsed,
+            [characterType]: true,
+          });
+          setCharacterActions({
+            ...characterActions,
+            [characterType]: true,
+          });
+          setSelectedCharacter(null);
+          setValidMovePositions([]);
+          checkAutoAdvance();
+          return;
       }
 
-      // Set ability mode and show valid jump positions
-      setAbilityMode("acrobate_jump");
-      setAcrobateJumpCount(0); // Reset jump counter
-      setValidMovePositions(jumpPositions);
+      setAbilityMode(result.abilityMode);
+      setValidMovePositions(result.validMovePositions);
+      if (result.abilityData) {
+        setAbilityData(result.abilityData);
+      }
 
-      // Don't mark as used yet - will mark after jumps are complete
-      return;
+    } catch (error) {
+      alert(error.message);
     }
+  };
 
-    // === DEFAULT: Mark ability as used for other characters ===
-    // Mark ability as used
-    setActiveAbilityUsed({
-      ...activeAbilityUsed,
-      [characterType]: true,
-    });
+  // Helper function untuk menghitung posisi adjacent dengan skill manager
+  const getAdjacentPositions = (positionId) => {
+    return SkillManager.getAdjacentPositions(positionId, SkillConstants.BOARD_CONFIG);
+  };
 
-    // Mark character as having acted (cannot move anymore)
-    setCharacterActions({
-      ...characterActions,
-      [characterType]: true,
-    });
-
-    // Deselect character
-    setSelectedCharacter(null);
-    setValidMovePositions([]); // Clear valid positions after using ability
-
-    // TODO: Implement specific active ability logic for other characters
-
-    // Check if all characters have acted
-    setTimeout(() => {
-      const currentPlayerCharacters = placedCards.filter(
-        (card) => card.owner === turn
-      );
-      const newActions = {
-        ...characterActions,
-        [characterType]: true,
-      };
-      const allCharactersActed = currentPlayerCharacters.every(
-        (character) => newActions[character.cardData.type]
-      );
-
-      if (allCharactersActed && currentPlayerCharacters.length > 0) {
-        setCurrentPhase("recruitment");
-        checkSkipRecruitment();
-      }
-    }, 200);
+  const isAdjacent = (pos1, pos2) => {
+    return SkillManager.isAdjacent(pos1, pos2, SkillConstants.BOARD_CONFIG);
   };
 
   // Cek apakah semua karakter sudah melakukan aksi
@@ -541,87 +363,9 @@ const Arena = () => {
   const handleBattlePositionClick = (position) => {
     if (gamePhase !== "battle" || currentPhase !== "action") return;
 
-    // === HANDLE ACROBATE JUMP MODE ===
-    if (abilityMode === "acrobate_jump" && selectedCharacter) {
-      // Check if clicked position is valid jump position
-      if (!validMovePositions.includes(position.id)) {
-        alert("Pilih posisi jump yang valid (ditandai dengan ring biru)!");
-        return;
-      }
-
-      // Move character to jump position
-      const newPlacedCards = placedCards.map((card) =>
-        card.positionId === selectedCharacter.positionId
-          ? { ...card, positionId: position.id }
-          : card
-      );
-      setPlacedCards(newPlacedCards);
-
-      // Update selected character position
-      const updatedCharacter = {
-        ...selectedCharacter,
-        positionId: position.id,
-      };
-      setSelectedCharacter(updatedCharacter);
-
-      // Increment jump count
-      const newJumpCount = acrobateJumpCount + 1;
-      setAcrobateJumpCount(newJumpCount);
-
-      // Check if can do another jump (max 2 jumps)
-      if (newJumpCount < 2) {
-        // Calculate new jump positions from new location
-        const newJumpPositions = getAcrobateJumpPositions(position.id);
-
-        if (newJumpPositions.length > 0) {
-          // Ask if player wants to jump again
-          const jumpAgain = window.confirm(
-            `Jump ${newJumpCount}/2 selesai. Lakukan jump lagi? (Cancel untuk selesai)`
-          );
-
-          if (jumpAgain) {
-            setValidMovePositions(newJumpPositions);
-            return; // Continue jump mode
-          }
-        }
-      }
-
-      // Finish ability - mark as used
-      setActiveAbilityUsed({
-        ...activeAbilityUsed,
-        [selectedCharacter.cardData.type]: true,
-      });
-      setCharacterActions({
-        ...characterActions,
-        [selectedCharacter.cardData.type]: true,
-      });
-
-      // Reset ability mode
-      setAbilityMode(null);
-      setAcrobateJumpCount(0);
-      setSelectedCharacter(null);
-      setValidMovePositions([]);
-
-      // Check win condition and auto-advance
-      setTimeout(() => checkWinCondition(), 100);
-      setTimeout(() => {
-        const currentPlayerCharacters = newPlacedCards.filter(
-          (card) => card.owner === turn
-        );
-        const newActions = {
-          ...characterActions,
-          [updatedCharacter.cardData.type]: true,
-        };
-        const allCharactersActed = currentPlayerCharacters.every(
-          (character) => newActions[character.cardData.type]
-        );
-
-        if (allCharactersActed && currentPlayerCharacters.length > 0) {
-          setCurrentPhase("recruitment");
-          checkSkipRecruitment();
-        }
-      }, 200);
-
+    // Handle ability modes
+    if (abilityMode && selectedCharacter) {
+      handleAbilityModeClick(position);
       return;
     }
 
@@ -677,41 +421,31 @@ const Arena = () => {
       console.log("- Is adjacent:", adjacentPositions.includes(position.id));
 
       if (adjacentPositions.includes(position.id)) {
-        // Move karakter ke posisi baru
-        const newPlacedCards = placedCards.map((card) =>
-          card.positionId === selectedCharacter.positionId
-            ? { ...card, positionId: position.id }
-            : card
-        );
-
-        setPlacedCards(newPlacedCards);
-
-        const newActions = {
-          ...characterActions,
-          [selectedCharacter.cardData.type]: true,
-        };
-
-        setCharacterActions(newActions);
-        setSelectedCharacter(null);
-        setValidMovePositions([]); // Clear valid positions after move
-
-        setTimeout(() => checkWinCondition(), 100);
-
-        // Auto cek apakah semua karakter sudah bertindak
-        setTimeout(() => {
-          const currentPlayerCharacters = newPlacedCards.filter(
-            (card) => card.owner === turn
-          );
-          const allCharactersActed = currentPlayerCharacters.every(
-            (character) => newActions[character.cardData.type]
+        // Special handling for Leader with Vizir
+        if (selectedCharacter.cardData.type === "king") {
+          handleLeaderMove(selectedCharacter, position.id);
+        } else {
+          // Normal move
+          const newPlacedCards = placedCards.map((card) =>
+            card.positionId === selectedCharacter.positionId
+              ? { ...card, positionId: position.id }
+              : card
           );
 
-          if (allCharactersActed && currentPlayerCharacters.length > 0) {
-            setCurrentPhase("recruitment");
-            setSelectedCharacter(null);
-            checkSkipRecruitment();
-          }
-        }, 200);
+          setPlacedCards(newPlacedCards);
+
+          const newActions = {
+            ...characterActions,
+            [selectedCharacter.cardData.type]: true,
+          };
+
+          setCharacterActions(newActions);
+          setSelectedCharacter(null);
+          setValidMovePositions([]);
+
+          setTimeout(() => checkWinCondition(), 100);
+          checkAutoAdvance(newPlacedCards, newActions);
+        }
       } else {
         alert("Hanya bisa pindah ke posisi yang adjacent!");
       }
@@ -720,8 +454,441 @@ const Arena = () => {
     // 3. Jika klik karakter yang sama → deselect
     if (selectedCharacter && clickedCharacter === selectedCharacter) {
       setSelectedCharacter(null);
-      setValidMovePositions([]); // Clear valid positions when deselecting
+      setValidMovePositions([]);
     }
+  };
+
+  // Handle leader move with Vizir bonus
+  const handleLeaderMove = (leader, targetPos) => {
+    const vizir = placedCards.find(p =>
+      p.cardData.type === "Vizir" && p.owner === turn
+    );
+
+    const distance = SkillManager.getDistanceInStraightLine(leader.positionId, targetPos);
+
+    if (vizir && distance === 2) {
+      // Check intermediate position for 2-space move
+      const dir = SkillManager.getDirection(leader.positionId, targetPos);
+      const intermediatePos = SkillManager.getNextPositionInDirection(
+        leader.positionId,
+        { deltaRow: dir.deltaRow / 2, deltaCol: dir.deltaCol / 2 },
+        SkillConstants.BOARD_CONFIG
+      );
+
+      if (intermediatePos && placedCards.find(c => c.positionId === intermediatePos)) {
+        alert("Tidak bisa bergerak 2 space - posisi tengah terhalang!");
+        return;
+      }
+    }
+
+    const newPlacedCards = placedCards.map((card) =>
+      card.positionId === leader.positionId
+        ? { ...card, positionId: targetPos }
+        : card
+    );
+
+    setPlacedCards(newPlacedCards);
+
+    const newActions = {
+      ...characterActions,
+      [leader.cardData.type]: true,
+    };
+
+    setCharacterActions(newActions);
+    setSelectedCharacter(null);
+    setValidMovePositions([]);
+
+    // Check for Nemesis movement
+    checkNemesisMovement(leader, targetPos);
+
+    setTimeout(() => checkWinCondition(), 100);
+    checkAutoAdvance(newPlacedCards, newActions);
+  };
+
+  // Check if Nemesis needs to move when opponent Leader moves
+  const checkNemesisMovement = (leader, newPos) => {
+    if (leader.owner === turn) return; // Only when opponent leader moves
+
+    const nemesis = placedCards.find(p =>
+      p.cardData.type === "Nemesis" && p.owner === turn
+    );
+
+    if (nemesis) {
+      console.log("Nemesis should move 2 spaces!");
+      // TODO: Implement Nemesis auto-movement
+    }
+  };
+
+  // Handle ability mode clicks
+  const handleAbilityModeClick = (position) => {
+    const config = SkillConstants.BOARD_CONFIG;
+
+    switch (abilityMode) {
+      case "acrobate_jump":
+        handleAcrobateJumpMode(position, config);
+        break;
+      case "vizir_move":
+        handleVizirMoveMode(position);
+        break;
+      case "cogneur_select_enemy":
+        handleCogneurSelectEnemy(position, config);
+        break;
+      case "cogneur_select_push":
+        handleCogneurSelectPush(position);
+        break;
+      case "garde_teleport":
+        handleGardeTeleport(position, config);
+        break;
+      case "garde_additional_move":
+        handleGardeAdditionalMove(position);
+        break;
+      case "lance_select_target":
+        handleLanceSelectTarget(position, config);
+        break;
+      case "lance_select_option":
+        handleLanceSelectOption(position, config);
+        break;
+      case "manipulator_select_target":
+        handleManipulatorSelectTarget(position, config);
+        break;
+      case "manipulator_select_move":
+        handleManipulatorSelectMove(position);
+        break;
+      case "rodeuse_move":
+        handleRodeuseMove(position);
+        break;
+      case "tavernier_select_ally":
+        handleTavernierSelectAlly(position, config);
+        break;
+      case "tavernier_select_move":
+        handleTavernierSelectMove(position);
+        break;
+      case "illusionist_select_target":
+        handleIllusionistSelectTarget(position);
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Ability mode handlers
+  const handleAcrobateJumpMode = (position, config) => {
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih posisi jump yang valid!");
+      return;
+    }
+
+    const result = SkillHandlers.executeAcrobateJump(
+      selectedCharacter,
+      position.id,
+      placedCards,
+      abilityData,
+      config
+    );
+
+    setPlacedCards(result.newPlacedCards);
+    setSelectedCharacter({ ...selectedCharacter, positionId: position.id });
+    setAbilityData(result.abilityData);
+
+    if (result.shouldContinue) {
+      // Ask if want to jump again
+      const jumpAgain = window.confirm(
+        `Jump ${result.abilityData.jumpCount}/2 selesai. Lakukan jump lagi?`
+      );
+
+      if (jumpAgain) {
+        setValidMovePositions(result.nextValidPositions);
+        return;
+      }
+    }
+
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  const handleVizirMoveMode = (position) => {
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih posisi 2 space yang valid!");
+      return;
+    }
+
+    const newPlacedCards = placedCards.map(card =>
+      card.positionId === selectedCharacter.positionId
+        ? { ...card, positionId: position.id }
+        : card
+    );
+    setPlacedCards(newPlacedCards);
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  const handleCogneurSelectEnemy = (position, config) => {
+    const enemy = placedCards.find(c => c.positionId === position.id && c.owner !== turn);
+    if (!enemy) {
+      alert("Pilih musuh adjacent!");
+      return;
+    }
+
+    const pushPositions = SkillManager.getCogneurPushPositions(
+      selectedCharacter.positionId,
+      position.id,
+      placedCards,
+      config
+    );
+
+    if (pushPositions.length === 0) {
+      alert("Tidak ada ruang untuk push musuh!");
+      resetAbilityMode();
+      return;
+    }
+
+    setAbilityMode("cogneur_select_push");
+    setValidMovePositions(pushPositions);
+    setAbilityData({ targetEnemy: position.id });
+  };
+
+  const handleCogneurSelectPush = (position) => {
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih posisi push yang valid!");
+      return;
+    }
+
+    const newPlacedCards = SkillHandlers.executeCogneurPush(
+      selectedCharacter.positionId,
+      abilityData.targetEnemy,
+      position.id,
+      placedCards,
+      SkillConstants.BOARD_CONFIG
+    );
+
+    setPlacedCards(newPlacedCards);
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  const handleGardeTeleport = (position, config) => {
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih posisi adjacent ke Leader!");
+      return;
+    }
+
+    const result = SkillHandlers.executeGardeRoyalTeleport(
+      selectedCharacter,
+      position.id,
+      placedCards,
+      config
+    );
+
+    setPlacedCards(result.newPlacedCards);
+    setSelectedCharacter({ ...selectedCharacter, positionId: position.id });
+
+    if (result.canMoveAgain) {
+      const moveAgain = window.confirm("Ingin bergerak 1 space tambahan?");
+      if (moveAgain) {
+        setAbilityMode("garde_additional_move");
+        setValidMovePositions(result.additionalMovePositions);
+        return;
+      }
+    }
+
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  const handleGardeAdditionalMove = (position) => {
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih posisi adjacent!");
+      return;
+    }
+
+    const newPlacedCards = placedCards.map(card =>
+      card.positionId === selectedCharacter.positionId
+        ? { ...card, positionId: position.id }
+        : card
+    );
+    setPlacedCards(newPlacedCards);
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  const handleLanceSelectTarget = (position, config) => {
+    const target = placedCards.find(c => c.positionId === position.id);
+    if (!target) {
+      alert("Pilih karakter target!");
+      return;
+    }
+
+    const direction = SkillManager.getDirection(selectedCharacter.positionId, position.id);
+    setAbilityMode("lance_select_option");
+    setValidMovePositions([position.id]);
+    setAbilityData({ target: position.id, direction });
+  };
+
+  const handleLanceSelectOption = (position, config) => {
+    const shouldPush = window.confirm(
+      "Pilih aksi:\nOK - Pindah ke posisi target (dorong)\nCancel - Tarik target jadi adjacent"
+    );
+
+    const newPlacedCards = SkillHandlers.executeLanceGrappin(
+      selectedCharacter.positionId,
+      abilityData.target,
+      shouldPush,
+      placedCards,
+      config
+    );
+
+    setPlacedCards(newPlacedCards);
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  const handleManipulatorSelectTarget = (position, config) => {
+    const target = placedCards.find(c => c.positionId === position.id && c.owner !== turn);
+    if (!target) {
+      alert("Pilih musuh target!");
+      return;
+    }
+
+    // Calculate possible move directions (1 space)
+    const adjacentToTarget = SkillManager.getAdjacentPositions(position.id, config);
+    const emptyAdjacent = adjacentToTarget.filter(pos =>
+      !placedCards.find(c => c.positionId === pos)
+    );
+
+    if (emptyAdjacent.length === 0) {
+      alert("Tidak ada space kosong adjacent ke target!");
+      setAbilityMode(null);
+      setValidMovePositions([]);
+      return;
+    }
+
+    setAbilityMode("manipulator_select_move");
+    setValidMovePositions(emptyAdjacent);
+    setAbilityData({ target: position.id });
+  };
+
+  const handleManipulatorSelectMove = (position) => {
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih posisi adjacent kosong!");
+      return;
+    }
+
+    // Move target to selected position
+    const newPlacedCards = placedCards.map(card =>
+      card.positionId === abilityData.target
+        ? { ...card, positionId: position.id }
+        : card
+    );
+    setPlacedCards(newPlacedCards);
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  const handleRodeuseMove = (position) => {
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih posisi non-adjacent ke musuh!");
+      return;
+    }
+
+    const newPlacedCards = placedCards.map(card =>
+      card.positionId === selectedCharacter.positionId
+        ? { ...card, positionId: position.id }
+        : card
+    );
+    setPlacedCards(newPlacedCards);
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  const handleTavernierSelectAlly = (position, config) => {
+    const ally = placedCards.find(c => c.positionId === position.id && c.owner === turn);
+    if (!ally) {
+      alert("Pilih sekutu adjacent!");
+      return;
+    }
+
+    // Calculate possible move positions for ally
+    const adjacentToAlly = SkillManager.getAdjacentPositions(position.id, config);
+    const emptyAdjacent = adjacentToAlly.filter(pos =>
+      !placedCards.find(c => c.positionId === pos) && pos !== selectedCharacter.positionId
+    );
+
+    if (emptyAdjacent.length === 0) {
+      alert("Tidak ada space kosong untuk pindahkan sekutu!");
+      setAbilityMode(null);
+      setValidMovePositions([]);
+      return;
+    }
+
+    setAbilityMode("tavernier_select_move");
+    setValidMovePositions(emptyAdjacent);
+    setAbilityData({ ally: position.id });
+  };
+
+  const handleTavernierSelectMove = (position) => {
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih posisi adjacent kosong!");
+      return;
+    }
+
+    // Move ally to selected position
+    const newPlacedCards = placedCards.map(card =>
+      card.positionId === abilityData.ally
+        ? { ...card, positionId: position.id }
+        : card
+    );
+    setPlacedCards(newPlacedCards);
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  const handleIllusionistSelectTarget = (position) => {
+    const target = placedCards.find(c => c.positionId === position.id);
+    if (!target) {
+      alert("Pilih karakter target!");
+      return;
+    }
+
+    const newPlacedCards = SkillHandlers.executeIllusionistSwitch(
+      selectedCharacter.positionId,
+      position.id,
+      placedCards
+    );
+
+    setPlacedCards(newPlacedCards);
+    finishAbility(selectedCharacter.cardData.type);
+  };
+
+  // Helper function to finish ability
+  const finishAbility = (characterType) => {
+    setActiveAbilityUsed({
+      ...activeAbilityUsed,
+      [characterType]: true,
+    });
+
+    setCharacterActions({
+      ...characterActions,
+      [characterType]: true,
+    });
+
+    resetAbilityMode();
+    setTimeout(() => checkWinCondition(), 100);
+    checkAutoAdvance();
+  };
+
+  const resetAbilityMode = () => {
+    setAbilityMode(null);
+    setValidMovePositions([]);
+    setAbilityData({});
+    setSelectedCharacter(null);
+  };
+
+  const checkAutoAdvance = (newPlacedCards = placedCards, newActions = characterActions) => {
+    setTimeout(() => {
+      const currentPlayerCharacters = newPlacedCards.filter(
+        (card) => card.owner === turn
+      );
+      const allCharactersActed = currentPlayerCharacters.every(
+        (character) => newActions[character.cardData.type]
+      );
+
+      if (allCharactersActed && currentPlayerCharacters.length > 0) {
+        setCurrentPhase("recruitment");
+        setSelectedCharacter(null);
+        checkSkipRecruitment();
+      }
+    }, 200);
   };
 
   // Handler untuk pilih posisi di recruitment phase
@@ -731,26 +898,7 @@ const Arena = () => {
     if (!selectedRecruitmentCard) return;
 
     // Cek apakah posisi valid (recruitment space di zona sendiri)
-    const recruitmentSpaces =
-      turn === "player"
-        ? [
-            "hex-1-4",
-            "hex-2-5",
-            "hex-3-6",
-            "hex-4-7",
-            "hex-5-6",
-            "hex-6-5",
-            "hex-7-4",
-          ]
-        : [
-            "hex-1-1",
-            "hex-2-1",
-            "hex-3-1",
-            "hex-4-1",
-            "hex-5-1",
-            "hex-6-1",
-            "hex-7-1",
-          ];
+    const recruitmentSpaces = SkillConstants.RECRUITMENT_SPACES[turn === "player" ? "player" : "enemy"];
 
     if (!recruitmentSpaces.includes(position.id)) {
       alert("Hanya bisa menempatkan di recruitment space zona sendiri!");
@@ -766,11 +914,9 @@ const Arena = () => {
 
     // Tempatkan karakter
     const color = turn === "player" ? playerColor : enemyColor;
-    const characterImage = `/Assets/Pions_personnages/${
-      color === "white" ? "Blanc" : "Noir"
-    }/Leaders_BGA_${color === "white" ? "white" : "black"}_${
-      selectedRecruitmentCard.type
-    }.png`;
+    const characterImage = `/Assets/Pions_personnages/${color === "white" ? "Blanc" : "Noir"
+      }/Leaders_BGA_${color === "white" ? "white" : "black"}_${selectedRecruitmentCard.type
+      }.png`;
 
     const newPlacedCards = [
       ...placedCards,
@@ -784,8 +930,6 @@ const Arena = () => {
     ];
 
     // Update available cards
-    // NOTE: we already removed the selected card in handleCardSelect, so availableCards
-    // does not contain selectedRecruitmentCard anymore. We still filter just in case.
     const newAvailableCards = availableCards.filter(
       (availCard) => availCard.type !== selectedRecruitmentCard.type
     );
@@ -820,9 +964,6 @@ const Arena = () => {
     }
   };
 
-  // Skip action phase manual (dihapus sesuai rules - tidak dipakai)
-  // Skip recruitment phase manual (dihapus sesuai rules - tidak dipakai)
-
   const checkWinCondition = () => {
     const playerKing = placedCards.find(
       (p) => p.owner === "player" && p.isKing
@@ -833,72 +974,116 @@ const Arena = () => {
     console.log("- Player King:", playerKing?.positionId);
     console.log("- Enemy King:", enemyKing?.positionId);
 
-    if (playerKing) {
-      const enemiesNear = placedCards.filter(
-        (p) =>
-          p.owner === "enemy" && isAdjacent(playerKing.positionId, p.positionId)
+    // Check Assassin capture
+    const checkAssassin = (king, attackerOwner) => {
+      if (!king) return false;
+      return SkillHandlers.checkAssassinCapture(
+        king.positionId,
+        placedCards,
+        attackerOwner,
+        SkillConstants.BOARD_CONFIG
       );
-      console.log(
-        "- Enemies near player king:",
-        enemiesNear.map((e) => ({ type: e.cardData.type, pos: e.positionId }))
-      );
+    };
 
-      if (enemiesNear.length >= 2) {
+    // Check Archer capture
+    const checkArcher = (king, attackerOwner) => {
+      if (!king) return false;
+      return SkillHandlers.checkArcherCapture(
+        king.positionId,
+        placedCards,
+        attackerOwner,
+        SkillConstants.BOARD_CONFIG
+      );
+    };
+
+    // Check normal capture
+    const checkNormalCapture = (king, attackerOwner) => {
+      if (!king) return false;
+      return SkillHandlers.checkNormalCapture(
+        king.positionId,
+        placedCards,
+        attackerOwner,
+        SkillConstants.BOARD_CONFIG
+      );
+    };
+
+    // Check surrounded
+    const checkSurrounded = (kingPos) => {
+      if (!kingPos) return false;
+      return SkillHandlers.checkSurrounded(
+        kingPos,
+        placedCards,
+        SkillConstants.BOARD_CONFIG
+      );
+    };
+
+    // Check Player King
+    if (playerKing) {
+      if (checkAssassin(playerKing, "enemy")) {
+        setTimeout(() => {
+          alert("🎉 Enemy wins! Player King captured by Assassin!");
+        }, 100);
+        return;
+      }
+
+      if (checkArcher(playerKing, "enemy")) {
+        setTimeout(() => {
+          alert("🎉 Enemy wins! Player King captured with Archer!");
+        }, 100);
+        return;
+      }
+
+      if (checkNormalCapture(playerKing, "enemy")) {
         setTimeout(() => {
           alert("🎉 Enemy wins! Player King captured!");
         }, 100);
         return;
       }
 
-      // Cek juga surrounded condition
-      const allAdjacent = getAdjacentPositions(playerKing.positionId);
-      const isSurrounded = allAdjacent.every((pos) =>
-        placedCards.find((p) => p.positionId === pos)
-      );
-      if (isSurrounded) {
+      if (checkSurrounded(playerKing.positionId)) {
         setTimeout(() => {
           alert("🎉 Enemy wins! Player King surrounded!");
         }, 100);
+        return;
       }
     }
 
+    // Check Enemy King
     if (enemyKing) {
-      const playersNear = placedCards.filter(
-        (p) =>
-          p.owner === "player" && isAdjacent(enemyKing.positionId, p.positionId)
-      );
-      console.log(
-        "- Players near enemy king:",
-        playersNear.map((p) => ({ type: p.cardData.type, pos: p.positionId }))
-      );
+      if (checkAssassin(enemyKing, "player")) {
+        setTimeout(() => {
+          alert("🎉 Player wins! Enemy King captured by Assassin!");
+        }, 100);
+        return;
+      }
 
-      if (playersNear.length >= 2) {
+      if (checkArcher(enemyKing, "player")) {
+        setTimeout(() => {
+          alert("🎉 Player wins! Enemy King captured with Archer!");
+        }, 100);
+        return;
+      }
+
+      if (checkNormalCapture(enemyKing, "player")) {
         setTimeout(() => {
           alert("🎉 Player wins! Enemy King captured!");
         }, 100);
         return;
       }
 
-      // Cek juga surrounded condition
-      const allAdjacent = getAdjacentPositions(enemyKing.positionId);
-      const isSurrounded = allAdjacent.every((pos) =>
-        placedCards.find((p) => p.positionId === pos)
-      );
-      if (isSurrounded) {
+      if (checkSurrounded(enemyKing.positionId)) {
         setTimeout(() => {
           alert("🎉 Player wins! Enemy King surrounded!");
         }, 100);
+        return;
       }
     }
   };
 
-  // === DI JSX - HAPUS TOMBOL SKIP ===
-  // NOTE: Komponen GameBoard & CardDeck diasumsikan mengikuti props yang ada.
-
-  // === PLACEMENT PHASE HANDLER (TIDAK DIUBAH) ===
+  // === PLACEMENT PHASE HANDLER ===
   const handlePositionClick = (position) => {
     if (gamePhase === "placement") {
-      // Existing placement logic (TIDAK DIUBAH)
+      // Existing placement logic
       if (!selectedCard) {
         alert("Pilih card terlebih dahulu!");
         return;
@@ -926,9 +1111,8 @@ const Arena = () => {
 
       const color = turn === "player" ? playerColor : enemyColor;
       const colorPrefix = color === "white" ? "white" : "black";
-      const characterImage = `/Assets/Pions_personnages/${
-        color === "white" ? "Blanc" : "Noir"
-      }/Leaders_BGA_${colorPrefix}_${selectedCard.type}.png`;
+      const characterImage = `/Assets/Pions_personnages/${color === "white" ? "Blanc" : "Noir"
+        }/Leaders_BGA_${colorPrefix}_${selectedCard.type}.png`;
 
       const newPlacedCards = [
         ...placedCards,
@@ -1010,7 +1194,7 @@ const Arena = () => {
           onCardSelect={handleCardSelect}
           selectedCard={selectedCard}
           deckCount={deck.length}
-          disabled={gamePhase === "battle" && currentPhase === "action"} // TAMBAH INI
+          disabled={gamePhase === "battle" && currentPhase === "action"}
         />
       </div>
 
@@ -1021,25 +1205,23 @@ const Arena = () => {
         turn={turn}
         gamePhase={gamePhase}
         onPositionClick={handlePositionClick}
-        recruitmentPhase={recruitmentPhase} // Pass recruitment phase ke GameBoard
-        activeAbilityUsed={activeAbilityUsed} // Pass active ability usage state
-        validMovePositions={validMovePositions} // Pass valid positions for highlighting
+        recruitmentPhase={recruitmentPhase}
+        activeAbilityUsed={activeAbilityUsed}
+        validMovePositions={validMovePositions}
+        abilityMode={abilityMode}
       />
 
       <div className="absolute top-4 translate-x-150 z-20 bg-black/80 px-6 py-3 rounded-lg border-2 border-yellow-400">
         <p className="text-yellow-300 text-lg font-bold">
           {gamePhase === "placement" &&
-            `⚔️ Character Placement - ${
-              turn === "player" ? "Player" : "Enemy"
+            `⚔️ Character Placement - ${turn === "player" ? "Player" : "Enemy"
             } Turn`}
           {gamePhase === "battle" &&
-            `⚡ Battle Phase - ${
-              (turn === "player" && playerColor === "white") ||
+            `⚡ Battle Phase - ${(turn === "player" && playerColor === "white") ||
               (turn === "enemy" && enemyColor === "white")
-                ? "⚪ White's"
-                : "⚫ Black's"
-            } Turn - ${
-              currentPhase === "action" ? "Action Phase" : "Recruitment Phase"
+              ? "⚪ White's"
+              : "⚫ Black's"
+            } Turn - ${currentPhase === "action" ? "Action Phase" : "Recruitment Phase"
             }`}
         </p>
         {firstTurn && (
@@ -1053,22 +1235,34 @@ const Arena = () => {
 
         {gamePhase === "battle" && currentPhase === "action" && (
           <div className="mt-2">
-            {/* Acrobate Jump Mode Indicator */}
-            {abilityMode === "acrobate_jump" && (
+            {/* Ability Mode Indicator */}
+            {abilityMode && (
               <div className="mb-2 p-2 bg-purple-900/60 border border-purple-400 rounded">
                 <p className="text-purple-300 text-sm font-bold">
-                  🤸 Acrobate Jump Mode
+                  {abilityMode === "acrobate_jump" && "🤸 Acrobate Jump Mode"}
+                  {abilityMode === "vizir_move" && "♟️ Cavalier 2-Space Move"}
+                  {abilityMode === "cogneur_select_enemy" && "💥 Cogneur - Select Enemy"}
+                  {abilityMode === "cogneur_select_push" && "💥 Cogneur - Select Push Direction"}
+                  {abilityMode === "garde_teleport" && "🛡️ Garde Royal - Teleport"}
+                  {abilityMode === "garde_additional_move" && "🛡️ Garde Royal - Additional Move"}
+                  {abilityMode === "lance_select_target" && "🎣 Lance Grappin - Select Target"}
+                  {abilityMode === "lance_select_option" && "🎣 Lance Grappin - Select Action"}
+                  {abilityMode === "manipulator_select_target" && "🌀 Manipulator - Select Target"}
+                  {abilityMode === "manipulator_select_move" && "🌀 Manipulator - Select Move"}
+                  {abilityMode === "rodeuse_move" && "👣 Rodeuse - Select Position"}
+                  {abilityMode === "tavernier_select_ally" && "🍺 Tavernier - Select Ally"}
+                  {abilityMode === "tavernier_select_move" && "🍺 Tavernier - Select Move"}
+                  {abilityMode === "illusionist_select_target" && "🔮 Illusionist - Select Target"}
                 </p>
                 <p className="text-purple-200 text-xs">
-                  Jump: {acrobateJumpCount}/2 - Click posisi jump yang valid
+                  Click posisi yang valid (ditandai dengan ring biru)
                 </p>
               </div>
             )}
 
             {selectedCharacter && !abilityMode && (
               <p className="text-green-400 text-sm mt-1">
-                Selected: {selectedCharacter.cardData.type} - Click adjacent
-                empty space to move
+                Selected: {selectedCharacter.cardData.type} - Click adjacent empty space to move
               </p>
             )}
             <p className="text-yellow-400 text-xs mt-1">
@@ -1085,15 +1279,14 @@ const Arena = () => {
             {selectedCharacter &&
               !abilityMode &&
               characterInfo[selectedCharacter.cardData.type]?.category ===
-                "Active" && (
+              "Active" && (
                 <button
                   onClick={handleUseActiveAbility}
                   disabled={activeAbilityUsed[selectedCharacter.cardData.type]}
-                  className={`mt-2 w-full px-4 py-2 font-bold rounded-lg border-2 shadow-lg transition-all duration-300 ${
-                    activeAbilityUsed[selectedCharacter.cardData.type]
-                      ? "bg-gray-600 border-gray-500 text-gray-400 cursor-not-allowed"
-                      : "bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white border-purple-400 hover:scale-105"
-                  }`}
+                  className={`mt-2 w-full px-4 py-2 font-bold rounded-lg border-2 shadow-lg transition-all duration-300 ${activeAbilityUsed[selectedCharacter.cardData.type]
+                    ? "bg-gray-600 border-gray-500 text-gray-400 cursor-not-allowed"
+                    : "bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white border-purple-400 hover:scale-105"
+                    }`}
                 >
                   {activeAbilityUsed[selectedCharacter.cardData.type]
                     ? "✓ Ability Used"
