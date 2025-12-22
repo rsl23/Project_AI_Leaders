@@ -1,0 +1,10 @@
+1. royal guard done
+2. cavalier/rider done tapi tidak bisa gerak kalau ada hero menghalangi.
+3. rodeuse done
+4. cogneur/bruiser sudah hamper benar kurang dikit
+5. accrobate done
+6. Tavernier/brewmaster done
+7. manipulator done
+8. lance grappin yg Tarik dan dorong sudah hampir sempurna tapi hanya Ketika di posisi lurus tapi miring itu tidak bisa 
+9. illusionist done
+PENGECEKAN GARIS LURUS MASIH TIDAK SEMPURNA

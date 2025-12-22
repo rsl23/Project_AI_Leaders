@@ -242,31 +242,72 @@ const Arena = () => {
 
       switch (characterType) {
         case "Acrobate":
-          result = SkillHandlers.handleAcrobateAbility(selectedCharacter, placedCards, config);
+          result = SkillHandlers.handleAcrobateAbility(
+            selectedCharacter,
+            placedCards,
+            config
+          );
           break;
         case "Cavalier":
-          result = SkillHandlers.handleVizirAbility(selectedCharacter, placedCards, config);
+          result = SkillHandlers.handleCavalierAbility(
+            selectedCharacter,
+            placedCards,
+            config
+          );
           break;
         case "Cogneur":
-          result = SkillHandlers.handleCogneurAbility(selectedCharacter, placedCards, turn, config);
+          result = SkillHandlers.handleCogneurAbility(
+            selectedCharacter,
+            placedCards,
+            turn,
+            config
+          );
           break;
         case "GardeRoyal":
-          result = SkillHandlers.handleGardeRoyalAbility(selectedCharacter, placedCards, turn, config);
+          result = SkillHandlers.handleGardeRoyalAbility(
+            selectedCharacter,
+            placedCards,
+            turn,
+            config
+          );
           break;
         case "LanceGrappin":
-          result = SkillHandlers.handleLanceGrappinAbility(selectedCharacter, placedCards, config);
+          result = SkillHandlers.handleLanceGrappinAbility(
+            selectedCharacter,
+            placedCards,
+            config
+          );
           break;
         case "Manipulator":
-          result = SkillHandlers.handleManipulatorAbility(selectedCharacter, placedCards, turn, config);
+          result = SkillHandlers.handleManipulatorAbility(
+            selectedCharacter,
+            placedCards,
+            turn,
+            config
+          );
           break;
         case "Rodeuse":
-          result = SkillHandlers.handleRodeuseAbility(selectedCharacter, placedCards, turn, config);
+          result = SkillHandlers.handleRodeuseAbility(
+            selectedCharacter,
+            placedCards,
+            turn,
+            config
+          );
           break;
         case "Tavernier":
-          result = SkillHandlers.handleTavernierAbility(selectedCharacter, placedCards, turn, config);
+          result = SkillHandlers.handleTavernierAbility(
+            selectedCharacter,
+            placedCards,
+            turn,
+            config
+          );
           break;
         case "Illusionist":
-          result = SkillHandlers.handleIllusionistAbility(selectedCharacter, placedCards, config);
+          result = SkillHandlers.handleIllusionistAbility(
+            selectedCharacter,
+            placedCards,
+            config
+          );
           break;
         default:
           // For characters without special active ability logic
@@ -289,7 +330,6 @@ const Arena = () => {
       if (result.abilityData) {
         setAbilityData(result.abilityData);
       }
-
     } catch (error) {
       alert(error.message);
     }
@@ -297,7 +337,10 @@ const Arena = () => {
 
   // Helper function untuk menghitung posisi adjacent dengan skill manager
   const getAdjacentPositions = (positionId) => {
-    return SkillManager.getAdjacentPositions(positionId, SkillConstants.BOARD_CONFIG);
+    return SkillManager.getAdjacentPositions(
+      positionId,
+      SkillConstants.BOARD_CONFIG
+    );
   };
 
   const isAdjacent = (pos1, pos2) => {
@@ -460,11 +503,14 @@ const Arena = () => {
 
   // Handle leader move with Vizir bonus
   const handleLeaderMove = (leader, targetPos) => {
-    const vizir = placedCards.find(p =>
-      p.cardData.type === "Vizir" && p.owner === turn
+    const vizir = placedCards.find(
+      (p) => p.cardData.type === "Vizir" && p.owner === turn
     );
 
-    const distance = SkillManager.getDistanceInStraightLine(leader.positionId, targetPos);
+    const distance = SkillManager.getDistanceInStraightLine(
+      leader.positionId,
+      targetPos
+    );
 
     if (vizir && distance === 2) {
       // Check intermediate position for 2-space move
@@ -475,7 +521,10 @@ const Arena = () => {
         SkillConstants.BOARD_CONFIG
       );
 
-      if (intermediatePos && placedCards.find(c => c.positionId === intermediatePos)) {
+      if (
+        intermediatePos &&
+        placedCards.find((c) => c.positionId === intermediatePos)
+      ) {
         alert("Tidak bisa bergerak 2 space - posisi tengah terhalang!");
         return;
       }
@@ -509,8 +558,8 @@ const Arena = () => {
   const checkNemesisMovement = (leader, newPos) => {
     if (leader.owner === turn) return; // Only when opponent leader moves
 
-    const nemesis = placedCards.find(p =>
-      p.cardData.type === "Nemesis" && p.owner === turn
+    const nemesis = placedCards.find(
+      (p) => p.cardData.type === "Nemesis" && p.owner === turn
     );
 
     if (nemesis) {
@@ -527,8 +576,8 @@ const Arena = () => {
       case "acrobate_jump":
         handleAcrobateJumpMode(position, config);
         break;
-      case "vizir_move":
-        handleVizirMoveMode(position);
+      case "cavalier_move":
+        handleCavalierMoveMode(position);
         break;
       case "cogneur_select_enemy":
         handleCogneurSelectEnemy(position, config);
@@ -605,13 +654,13 @@ const Arena = () => {
     finishAbility(selectedCharacter.cardData.type);
   };
 
-  const handleVizirMoveMode = (position) => {
+  const handleCavalierMoveMode = (position) => {
     if (!validMovePositions.includes(position.id)) {
       alert("Pilih posisi 2 space yang valid!");
       return;
     }
 
-    const newPlacedCards = placedCards.map(card =>
+    const newPlacedCards = placedCards.map((card) =>
       card.positionId === selectedCharacter.positionId
         ? { ...card, positionId: position.id }
         : card
@@ -621,7 +670,9 @@ const Arena = () => {
   };
 
   const handleCogneurSelectEnemy = (position, config) => {
-    const enemy = placedCards.find(c => c.positionId === position.id && c.owner !== turn);
+    const enemy = placedCards.find(
+      (c) => c.positionId === position.id && c.owner !== turn
+    );
     if (!enemy) {
       alert("Pilih musuh adjacent!");
       return;
@@ -697,7 +748,7 @@ const Arena = () => {
       return;
     }
 
-    const newPlacedCards = placedCards.map(card =>
+    const newPlacedCards = placedCards.map((card) =>
       card.positionId === selectedCharacter.positionId
         ? { ...card, positionId: position.id }
         : card
@@ -707,27 +758,36 @@ const Arena = () => {
   };
 
   const handleLanceSelectTarget = (position, config) => {
-    const target = placedCards.find(c => c.positionId === position.id);
+    // Validate that selected position is in valid targets (must be in straight line)
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih karakter yang berada dalam 1 garis lurus!");
+      return;
+    }
+
+    const target = placedCards.find((c) => c.positionId === position.id);
     if (!target) {
       alert("Pilih karakter target!");
       return;
     }
 
-    const direction = SkillManager.getDirection(selectedCharacter.positionId, position.id);
+    const direction = SkillManager.getDirection(
+      selectedCharacter.positionId,
+      position.id
+    );
     setAbilityMode("lance_select_option");
     setValidMovePositions([position.id]);
     setAbilityData({ target: position.id, direction });
   };
 
   const handleLanceSelectOption = (position, config) => {
-    const shouldPush = window.confirm(
-      "Pilih aksi:\nOK - Pindah ke posisi target (dorong)\nCancel - Tarik target jadi adjacent"
+    const shouldMoveToTarget = window.confirm(
+      "Pilih aksi:\nOK - Pindah dekat target (Lance moves next to enemy)\nCancel - Tarik target jadi adjacent (Pull enemy close)"
     );
 
     const newPlacedCards = SkillHandlers.executeLanceGrappin(
       selectedCharacter.positionId,
       abilityData.target,
-      shouldPush,
+      shouldMoveToTarget,
       placedCards,
       config
     );
@@ -737,16 +797,27 @@ const Arena = () => {
   };
 
   const handleManipulatorSelectTarget = (position, config) => {
-    const target = placedCards.find(c => c.positionId === position.id && c.owner !== turn);
+    // Validate that selected position is in valid targets (must be in straight line)
+    if (!validMovePositions.includes(position.id)) {
+      alert("Pilih musuh yang berada dalam 1 garis lurus!");
+      return;
+    }
+
+    const target = placedCards.find(
+      (c) => c.positionId === position.id && c.owner !== turn
+    );
     if (!target) {
       alert("Pilih musuh target!");
       return;
     }
 
     // Calculate possible move directions (1 space)
-    const adjacentToTarget = SkillManager.getAdjacentPositions(position.id, config);
-    const emptyAdjacent = adjacentToTarget.filter(pos =>
-      !placedCards.find(c => c.positionId === pos)
+    const adjacentToTarget = SkillManager.getAdjacentPositions(
+      position.id,
+      config
+    );
+    const emptyAdjacent = adjacentToTarget.filter(
+      (pos) => !placedCards.find((c) => c.positionId === pos)
     );
 
     if (emptyAdjacent.length === 0) {
@@ -768,7 +839,7 @@ const Arena = () => {
     }
 
     // Move target to selected position
-    const newPlacedCards = placedCards.map(card =>
+    const newPlacedCards = placedCards.map((card) =>
       card.positionId === abilityData.target
         ? { ...card, positionId: position.id }
         : card
@@ -783,7 +854,7 @@ const Arena = () => {
       return;
     }
 
-    const newPlacedCards = placedCards.map(card =>
+    const newPlacedCards = placedCards.map((card) =>
       card.positionId === selectedCharacter.positionId
         ? { ...card, positionId: position.id }
         : card
@@ -793,16 +864,23 @@ const Arena = () => {
   };
 
   const handleTavernierSelectAlly = (position, config) => {
-    const ally = placedCards.find(c => c.positionId === position.id && c.owner === turn);
+    const ally = placedCards.find(
+      (c) => c.positionId === position.id && c.owner === turn
+    );
     if (!ally) {
       alert("Pilih sekutu adjacent!");
       return;
     }
 
     // Calculate possible move positions for ally
-    const adjacentToAlly = SkillManager.getAdjacentPositions(position.id, config);
-    const emptyAdjacent = adjacentToAlly.filter(pos =>
-      !placedCards.find(c => c.positionId === pos) && pos !== selectedCharacter.positionId
+    const adjacentToAlly = SkillManager.getAdjacentPositions(
+      position.id,
+      config
+    );
+    const emptyAdjacent = adjacentToAlly.filter(
+      (pos) =>
+        !placedCards.find((c) => c.positionId === pos) &&
+        pos !== selectedCharacter.positionId
     );
 
     if (emptyAdjacent.length === 0) {
@@ -824,7 +902,7 @@ const Arena = () => {
     }
 
     // Move ally to selected position
-    const newPlacedCards = placedCards.map(card =>
+    const newPlacedCards = placedCards.map((card) =>
       card.positionId === abilityData.ally
         ? { ...card, positionId: position.id }
         : card
@@ -834,7 +912,7 @@ const Arena = () => {
   };
 
   const handleIllusionistSelectTarget = (position) => {
-    const target = placedCards.find(c => c.positionId === position.id);
+    const target = placedCards.find((c) => c.positionId === position.id);
     if (!target) {
       alert("Pilih karakter target!");
       return;
@@ -874,7 +952,10 @@ const Arena = () => {
     setSelectedCharacter(null);
   };
 
-  const checkAutoAdvance = (newPlacedCards = placedCards, newActions = characterActions) => {
+  const checkAutoAdvance = (
+    newPlacedCards = placedCards,
+    newActions = characterActions
+  ) => {
     setTimeout(() => {
       const currentPlayerCharacters = newPlacedCards.filter(
         (card) => card.owner === turn
@@ -898,7 +979,8 @@ const Arena = () => {
     if (!selectedRecruitmentCard) return;
 
     // Cek apakah posisi valid (recruitment space di zona sendiri)
-    const recruitmentSpaces = SkillConstants.RECRUITMENT_SPACES[turn === "player" ? "player" : "enemy"];
+    const recruitmentSpaces =
+      SkillConstants.RECRUITMENT_SPACES[turn === "player" ? "player" : "enemy"];
 
     if (!recruitmentSpaces.includes(position.id)) {
       alert("Hanya bisa menempatkan di recruitment space zona sendiri!");
@@ -914,9 +996,11 @@ const Arena = () => {
 
     // Tempatkan karakter
     const color = turn === "player" ? playerColor : enemyColor;
-    const characterImage = `/Assets/Pions_personnages/${color === "white" ? "Blanc" : "Noir"
-      }/Leaders_BGA_${color === "white" ? "white" : "black"}_${selectedRecruitmentCard.type
-      }.png`;
+    const characterImage = `/Assets/Pions_personnages/${
+      color === "white" ? "Blanc" : "Noir"
+    }/Leaders_BGA_${color === "white" ? "white" : "black"}_${
+      selectedRecruitmentCard.type
+    }.png`;
 
     const newPlacedCards = [
       ...placedCards,
@@ -1111,8 +1195,9 @@ const Arena = () => {
 
       const color = turn === "player" ? playerColor : enemyColor;
       const colorPrefix = color === "white" ? "white" : "black";
-      const characterImage = `/Assets/Pions_personnages/${color === "white" ? "Blanc" : "Noir"
-        }/Leaders_BGA_${colorPrefix}_${selectedCard.type}.png`;
+      const characterImage = `/Assets/Pions_personnages/${
+        color === "white" ? "Blanc" : "Noir"
+      }/Leaders_BGA_${colorPrefix}_${selectedCard.type}.png`;
 
       const newPlacedCards = [
         ...placedCards,
@@ -1214,14 +1299,17 @@ const Arena = () => {
       <div className="absolute top-4 translate-x-150 z-20 bg-black/80 px-6 py-3 rounded-lg border-2 border-yellow-400">
         <p className="text-yellow-300 text-lg font-bold">
           {gamePhase === "placement" &&
-            `⚔️ Character Placement - ${turn === "player" ? "Player" : "Enemy"
+            `⚔️ Character Placement - ${
+              turn === "player" ? "Player" : "Enemy"
             } Turn`}
           {gamePhase === "battle" &&
-            `⚡ Battle Phase - ${(turn === "player" && playerColor === "white") ||
+            `⚡ Battle Phase - ${
+              (turn === "player" && playerColor === "white") ||
               (turn === "enemy" && enemyColor === "white")
-              ? "⚪ White's"
-              : "⚫ Black's"
-            } Turn - ${currentPhase === "action" ? "Action Phase" : "Recruitment Phase"
+                ? "⚪ White's"
+                : "⚫ Black's"
+            } Turn - ${
+              currentPhase === "action" ? "Action Phase" : "Recruitment Phase"
             }`}
         </p>
         {firstTurn && (
@@ -1240,19 +1328,32 @@ const Arena = () => {
               <div className="mb-2 p-2 bg-purple-900/60 border border-purple-400 rounded">
                 <p className="text-purple-300 text-sm font-bold">
                   {abilityMode === "acrobate_jump" && "🤸 Acrobate Jump Mode"}
-                  {abilityMode === "vizir_move" && "♟️ Cavalier 2-Space Move"}
-                  {abilityMode === "cogneur_select_enemy" && "💥 Cogneur - Select Enemy"}
-                  {abilityMode === "cogneur_select_push" && "💥 Cogneur - Select Push Direction"}
-                  {abilityMode === "garde_teleport" && "🛡️ Garde Royal - Teleport"}
-                  {abilityMode === "garde_additional_move" && "🛡️ Garde Royal - Additional Move"}
-                  {abilityMode === "lance_select_target" && "🎣 Lance Grappin - Select Target"}
-                  {abilityMode === "lance_select_option" && "🎣 Lance Grappin - Select Action"}
-                  {abilityMode === "manipulator_select_target" && "🌀 Manipulator - Select Target"}
-                  {abilityMode === "manipulator_select_move" && "🌀 Manipulator - Select Move"}
-                  {abilityMode === "rodeuse_move" && "👣 Rodeuse - Select Position"}
-                  {abilityMode === "tavernier_select_ally" && "🍺 Tavernier - Select Ally"}
-                  {abilityMode === "tavernier_select_move" && "🍺 Tavernier - Select Move"}
-                  {abilityMode === "illusionist_select_target" && "🔮 Illusionist - Select Target"}
+                  {abilityMode === "cavalier_move" &&
+                    "♟️ Cavalier 2-Space Move"}
+                  {abilityMode === "cogneur_select_enemy" &&
+                    "💥 Cogneur - Select Enemy"}
+                  {abilityMode === "cogneur_select_push" &&
+                    "💥 Cogneur - Select Push Direction"}
+                  {abilityMode === "garde_teleport" &&
+                    "🛡️ Garde Royal - Teleport"}
+                  {abilityMode === "garde_additional_move" &&
+                    "🛡️ Garde Royal - Additional Move"}
+                  {abilityMode === "lance_select_target" &&
+                    "🎣 Lance Grappin - Select Target"}
+                  {abilityMode === "lance_select_option" &&
+                    "🎣 Lance Grappin - Select Action"}
+                  {abilityMode === "manipulator_select_target" &&
+                    "🌀 Manipulator - Select Target"}
+                  {abilityMode === "manipulator_select_move" &&
+                    "🌀 Manipulator - Select Move"}
+                  {abilityMode === "rodeuse_move" &&
+                    "👣 Rodeuse - Select Position"}
+                  {abilityMode === "tavernier_select_ally" &&
+                    "🍺 Tavernier - Select Ally"}
+                  {abilityMode === "tavernier_select_move" &&
+                    "🍺 Tavernier - Select Move"}
+                  {abilityMode === "illusionist_select_target" &&
+                    "🔮 Illusionist - Select Target"}
                 </p>
                 <p className="text-purple-200 text-xs">
                   Click posisi yang valid (ditandai dengan ring biru)
@@ -1262,7 +1363,8 @@ const Arena = () => {
 
             {selectedCharacter && !abilityMode && (
               <p className="text-green-400 text-sm mt-1">
-                Selected: {selectedCharacter.cardData.type} - Click adjacent empty space to move
+                Selected: {selectedCharacter.cardData.type} - Click adjacent
+                empty space to move
               </p>
             )}
             <p className="text-yellow-400 text-xs mt-1">
@@ -1279,14 +1381,15 @@ const Arena = () => {
             {selectedCharacter &&
               !abilityMode &&
               characterInfo[selectedCharacter.cardData.type]?.category ===
-              "Active" && (
+                "Active" && (
                 <button
                   onClick={handleUseActiveAbility}
                   disabled={activeAbilityUsed[selectedCharacter.cardData.type]}
-                  className={`mt-2 w-full px-4 py-2 font-bold rounded-lg border-2 shadow-lg transition-all duration-300 ${activeAbilityUsed[selectedCharacter.cardData.type]
-                    ? "bg-gray-600 border-gray-500 text-gray-400 cursor-not-allowed"
-                    : "bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white border-purple-400 hover:scale-105"
-                    }`}
+                  className={`mt-2 w-full px-4 py-2 font-bold rounded-lg border-2 shadow-lg transition-all duration-300 ${
+                    activeAbilityUsed[selectedCharacter.cardData.type]
+                      ? "bg-gray-600 border-gray-500 text-gray-400 cursor-not-allowed"
+                      : "bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white border-purple-400 hover:scale-105"
+                  }`}
                 >
                   {activeAbilityUsed[selectedCharacter.cardData.type]
                     ? "✓ Ability Used"
