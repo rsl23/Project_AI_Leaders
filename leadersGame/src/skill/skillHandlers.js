@@ -323,8 +323,16 @@ export const executeLanceGrappin = (
   placedCards,
   boardConfig
 ) => {
+  console.log("LancePos:", lancePos, "TargetPos:", targetPos);
+
+  // Jika LancePos adalah objek, ambil ID-nya
+  const from = typeof lancePos === "object" ? lancePos.positionId : lancePos;
+  const to = typeof targetPos === "object" ? targetPos.positionId : targetPos;
+
+  // Baru gunakan 'from' dan 'to' untuk kalkulasi
+  const startCube = toCube(from);
   // Get normalized direction (unit vector)
-  const fullDirection = SkillManager.getDirection(lancePos, targetPos);
+  const fullDirection = SkillManager.getDirection(from, to);
   const distance = Math.max(
     Math.abs(fullDirection.deltaRow),
     Math.abs(fullDirection.deltaCol)
@@ -339,14 +347,14 @@ export const executeLanceGrappin = (
   if (shouldMoveToTarget) {
     // Option 1: Move Lance Grappin along straight line to position adjacent to target
     // Walk along the straight line from Lance to Target
-    let currentPos = lancePos;
+    let currentPos = from;
     let lastEmptyPos = null;
 
-    while (currentPos !== targetPos) {
+    while (currentPos !== to) {
       const nextPos = SkillManager.getNextPositionInDirection(
         currentPos,
-        direction,
-        boardConfig
+        to,
+        1
       );
 
       if (!nextPos) break;
@@ -468,34 +476,24 @@ export const checkArcherCapture = (
     (p) => p.owner === attackerOwner && p.cardData.type === "Archer"
   );
 
+  // Check each Archer
   for (const archer of archers) {
-    // Check if Archer is exactly 2 spaces away in straight line
-    const distance = SkillManager.getDistanceInStraightLine(
-      archer.positionId,
-      kingPos
-    );
-    if (distance === 2) {
-      // Check line of sight
-      if (
-        SkillManager.isVisibleInStraightLine(
-          archer.positionId,
-          kingPos,
-          placedCards,
-          boardConfig
-        )
-      ) {
-        // Check if there's at least one other adjacent ally to king
-        const otherAllies = placedCards.filter(
-          (p) =>
-            p.owner === attackerOwner &&
-            p.cardData.type !== "Archer" &&
-            SkillManager.isAdjacent(p.positionId, kingPos, boardConfig)
-        );
+    // Archer does NOT help when adjacent
+    if (SkillManager.isAdjacent(archer.positionId, kingPos, boardConfig)) {
+      continue;
+    }
 
-        if (otherAllies.length >= 1) {
-          return true;
-        }
-      }
+    // Check if Archer is exactly 2 spaces away in a straight line
+    // NOTE: Leader does NOT need to be visible (obstacles allowed)
+    if (
+      SkillManager.isTwoSpacesAwayInStraightLine(
+        archer.positionId,
+        kingPos,
+        boardConfig
+      )
+    ) {
+      // Archer from 2 spaces can capture the king directly
+      return true;
     }
   }
 

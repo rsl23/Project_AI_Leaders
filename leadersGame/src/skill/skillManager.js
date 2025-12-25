@@ -11,6 +11,77 @@ export const BOARD_CONFIG = {
   7: 4,
 };
 
+// Map hex-row-col ke Cube Coordinates (x, y, z)
+export const toCube = (positionId) => {
+  // Jika input bukan string (misal: objek atau undefined), cegah crash
+  if (!positionId || typeof positionId !== "string") {
+    // console.warn("toCube menerima input tidak valid:", positionId);
+    return { x: 0, y: 0, z: 0 };
+  }
+
+  const parts = positionId.split("-");
+  if (parts.length < 3) return { x: 0, y: 0, z: 0 };
+
+  const r = parseInt(parts[1]); // Row
+  const c = parseInt(parts[2]); // Col
+
+  /**
+   * KONVERSI KHUSUS UNTUK PAPAN KAMU (4,5,6,7,6,5,4)
+   * Kita ubah ke koordinat Axial (q, r) dulu
+   */
+  const axialR = r - 4; // Baris tengah (4) jadi 0
+
+  // Offset kolom agar kolom tengah tetap selaras
+  let axialQ;
+  if (r <= 4) {
+    axialQ = c - 1 - (r - 1); // Penyesuaian baris 1-4 (expanding)
+  } else {
+    axialQ = c - 4; // Penyesuaian baris 5-7 (contracting)
+  }
+
+  // Dari Axial ke Cube (x, y, z)
+  const x = axialQ;
+  const z = axialR;
+  const y = -x - z;
+
+  return { x, y, z };
+};
+
+// Kebalikan: Cube ke ID string
+export const fromCube = (x, y, z) => {
+  const axialR = z;
+  const axialQ = x;
+
+  const r = axialR + 4;
+  let c;
+
+  if (r <= 4) {
+    c = axialQ + (r - 1) + 1;
+  } else {
+    c = axialQ + 4;
+  }
+
+  const id = `hex-${r}-${c}`;
+  return isValidPosition(id) ? id : null;
+};
+
+// Jangan lupa fungsi Distance yang simpel
+export const getDistance = (pos1, pos2) => {
+  const a = toCube(pos1);
+  const b = toCube(pos2);
+  return Math.max(
+    Math.abs(a.x - b.x),
+    Math.abs(a.y - b.y),
+    Math.abs(a.z - b.z)
+  );
+};
+export const isStraightLine = (pos1, pos2) => {
+  const a = toCube(pos1);
+  const b = toCube(pos2);
+  // Di hexagon, garis lurus terjadi jika salah satu sumbu sama
+  return a.x === b.x || a.y === b.y || a.z === b.z;
+};
+
 // ============================================
 // CORE HELPER FUNCTIONS
 // ============================================
@@ -82,78 +153,130 @@ export const getDirection = (fromPos, toPos) => {
   };
 };
 
+// export const getNextPositionInDirection = (
+//   currentPos,
+//   direction,
+//   boardConfig = BOARD_CONFIG
+// ) => {
+//   const [_, row, col] = currentPos.split("-").map(Number);
+//   const maxCols = boardConfig;
+
+//   const newRow = row + direction.deltaRow;
+//   if (newRow < 1 || newRow > 7) return null;
+
+//   let newCol = col + direction.deltaCol;
+
+//   // Adjust for hexagonal geometry when crossing row 4
+//   if (direction.deltaRow !== 0) {
+//     const fromExpanding = row < 4;
+//     const toExpanding = newRow < 4;
+//     const fromRow4 = row === 4;
+//     const toRow4 = newRow === 4;
+
+//     // When moving from row 4 to row 5 (expanding to contracting)
+//     // or from row 5 to row 4 (contracting to expanding)
+//     if ((fromRow4 && newRow === 5) || (row === 5 && toRow4)) {
+//       // Column offset adjustment for hex grid transition
+//       if (direction.deltaRow > 0 && fromRow4) {
+//         // Moving down from row 4 to row 5: no adjustment needed
+//         // Row 4 has 7 cols, row 5 has 6 cols
+//         // Adjacent pattern already handles this
+//       } else if (direction.deltaRow < 0 && toRow4) {
+//         // Moving up from row 5 to row 4: no adjustment needed
+//       }
+//     }
+//   }
+
+//   if (newCol < 1 || newCol > (maxCols[newRow] || 0)) return null;
+//   return `hex-${newRow}-${newCol}`;
+// };
+
 export const getNextPositionInDirection = (
   currentPos,
-  direction,
+  targetOrDirection, // Bisa berupa string "hex-1-1" atau object {deltaRow, deltaCol}
   boardConfig = BOARD_CONFIG
 ) => {
-  const [_, row, col] = currentPos.split("-").map(Number);
-  const maxCols = boardConfig;
+  // Jika yang dikirim adalah objek arah (sistem lama kamu)
+  if (typeof targetOrDirection === "object" && targetOrDirection !== null) {
+    const [_, r, c] = currentPos.split("-").map(Number);
+    const newRow = r + targetOrDirection.deltaRow;
+    const newCol = c + targetOrDirection.deltaCol;
 
-  const newRow = row + direction.deltaRow;
-  if (newRow < 1 || newRow > 7) return null;
-
-  let newCol = col + direction.deltaCol;
-
-  // Adjust for hexagonal geometry when crossing row 4
-  if (direction.deltaRow !== 0) {
-    const fromExpanding = row < 4;
-    const toExpanding = newRow < 4;
-    const fromRow4 = row === 4;
-    const toRow4 = newRow === 4;
-
-    // When moving from row 4 to row 5 (expanding to contracting)
-    // or from row 5 to row 4 (contracting to expanding)
-    if ((fromRow4 && newRow === 5) || (row === 5 && toRow4)) {
-      // Column offset adjustment for hex grid transition
-      if (direction.deltaRow > 0 && fromRow4) {
-        // Moving down from row 4 to row 5: no adjustment needed
-        // Row 4 has 7 cols, row 5 has 6 cols
-        // Adjacent pattern already handles this
-      } else if (direction.deltaRow < 0 && toRow4) {
-        // Moving up from row 5 to row 4: no adjustment needed
-      }
-    }
+    const nextId = `hex-${newRow}-${newCol}`;
+    return isValidPosition(nextId, boardConfig) ? nextId : null;
   }
 
-  if (newCol < 1 || newCol > (maxCols[newRow] || 0)) return null;
-  return `hex-${newRow}-${newCol}`;
+  // Jika yang dikirim adalah string ID target (sistem baru)
+  const start = toCube(currentPos);
+  const target = toCube(targetOrDirection);
+  const dist = getDistance(currentPos, targetOrDirection);
+
+  if (dist === 0) return null;
+
+  const dx = Math.round((target.x - start.x) / dist);
+  const dy = Math.round((target.y - start.y) / dist);
+  const dz = Math.round((target.z - start.z) / dist);
+
+  return fromCube(start.x + dx, start.y + dy, start.z + dz);
 };
+// export const isVisibleInStraightLine = (
+//   fromPos,
+//   toPos,
+//   placedCards,
+//   boardConfig = BOARD_CONFIG
+// ) => {
+//   if (fromPos === toPos) return false;
 
-export const isVisibleInStraightLine = (
-  fromPos,
-  toPos,
-  placedCards,
-  boardConfig = BOARD_CONFIG
-) => {
-  if (fromPos === toPos) return false;
+//   // Try all 6 possible hex directions from start
+//   const adjacent = getAdjacentPositions(fromPos, boardConfig);
 
-  // Try all 6 possible hex directions from start
-  const adjacent = getAdjacentPositions(fromPos, boardConfig);
+//   for (const firstStep of adjacent) {
+//     const path = walkInDirection(fromPos, firstStep, toPos, boardConfig);
 
-  for (const firstStep of adjacent) {
-    const path = walkInDirection(fromPos, firstStep, toPos, boardConfig);
+//     if (path && path[path.length - 1] === toPos) {
+//       // Found a straight path! Check for obstacles
+//       let hasObstacle = false;
+//       for (let i = 1; i < path.length - 1; i++) {
+//         const obstacle = placedCards.find(
+//           (card) => card.positionId === path[i]
+//         );
+//         if (obstacle) {
+//           hasObstacle = true;
+//           break;
+//         }
+//       }
 
-    if (path && path[path.length - 1] === toPos) {
-      // Found a straight path! Check for obstacles
-      let hasObstacle = false;
-      for (let i = 1; i < path.length - 1; i++) {
-        const obstacle = placedCards.find(
-          (card) => card.positionId === path[i]
-        );
-        if (obstacle) {
-          hasObstacle = true;
-          break;
-        }
-      }
+//       if (!hasObstacle) {
+//         return true;
+//       }
+//     }
+//   }
 
-      if (!hasObstacle) {
-        return true;
-      }
+//   return false;
+// };
+
+export const isVisibleInStraightLine = (fromPos, toPos, placedCards) => {
+  if (!isStraightLine(fromPos, toPos)) return false;
+
+  const start = toCube(fromPos);
+  const end = toCube(toPos);
+  const dist = getDistance(fromPos, toPos);
+
+  // Cek setiap petak di antara (tidak termasuk start dan end)
+  for (let i = 1; i < dist; i++) {
+    const t = i / dist;
+    // Interpolasi linear koordinat cube
+    const midX = Math.round(start.x + (end.x - start.x) * t);
+    const midY = Math.round(start.y + (end.y - start.y) * t);
+    const midZ = Math.round(start.z + (end.z - start.z) * t);
+
+    const midId = fromCube(midX, midY, midZ);
+    if (midId) {
+      const isOccupied = placedCards.some((card) => card.positionId === midId);
+      if (isOccupied) return false; // Ada penghalang
     }
   }
-
-  return false;
+  return true;
 };
 
 // Walk in a consistent hexagonal direction from start toward target
@@ -294,6 +417,73 @@ export const getDistanceInStraightLine = (pos1, pos2) => {
   const [_, row1, col1] = pos1.split("-").map(Number);
   const [__, row2, col2] = pos2.split("-").map(Number);
   return Math.max(Math.abs(row2 - row1), Math.abs(col2 - col1));
+};
+
+// Check if two positions are exactly 2 spaces apart in a straight hexagonal line
+// Used for Archer passive ability (does not require visibility)
+export const isTwoSpacesAwayInStraightLine = (
+  pos1,
+  pos2,
+  boardConfig = BOARD_CONFIG
+) => {
+  if (pos1 === pos2) return false;
+
+  // Try all 6 directions from pos1
+  const adjacent = getAdjacentPositions(pos1, boardConfig);
+
+  for (const firstStep of adjacent) {
+    // Get the direction from pos1 to firstStep
+    const [_, r1, c1] = pos1.split("-").map(Number);
+    const [__, r2, c2] = firstStep.split("-").map(Number);
+    const initialDr = r2 - r1;
+    const initialDc = c2 - c1;
+
+    // Try to take one more step in the same direction
+    const adjacentFromFirst = getAdjacentPositions(firstStep, boardConfig);
+
+    for (const secondStep of adjacentFromFirst) {
+      if (secondStep === pos2) {
+        // Found pos2 at 2 steps! Verify it's in EXACTLY the same direction
+        const [___, r3, c3] = firstStep.split("-").map(Number);
+        const [____, r4, c4] = secondStep.split("-").map(Number);
+        const secondDr = r4 - r3;
+        const secondDc = c4 - c3;
+
+        // For EXACTLY 2 steps, we need stricter validation
+        // The direction vectors must be very similar (accounting for hexagonal transitions)
+
+        // Both steps must have same row direction (or both horizontal)
+        if (initialDr !== secondDr) {
+          continue; // Different row directions = not straight
+        }
+
+        // For horizontal lines (dr=0), deltaCol must be same sign
+        if (initialDr === 0) {
+          if (Math.sign(initialDc) === Math.sign(secondDc)) {
+            return true;
+          }
+          continue;
+        }
+
+        // For diagonal/vertical lines, deltaCol can vary slightly due to offset
+        // but should be consistent with the hexagonal geometry
+        // Key: column direction should not reverse
+        if (Math.abs(initialDc - secondDc) <= 1) {
+          // Allow deltaCol to differ by at most 1 (for row transition effects)
+          // But both should be in "same general direction"
+          if (
+            initialDc === 0 ||
+            secondDc === 0 ||
+            Math.sign(initialDc) === Math.sign(secondDc)
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
 };
 
 // ============================================
@@ -681,6 +871,7 @@ export default {
   isVisibleInStraightLine,
   isAdjacent,
   getDistanceInStraightLine,
+  isTwoSpacesAwayInStraightLine,
 
   // Skill-specific functions
   getAcrobateJumpPositions,

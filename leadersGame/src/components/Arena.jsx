@@ -219,8 +219,8 @@ const Arena = () => {
 
   // === USE ACTIVE ABILITY ===
   const handleUseActiveAbility = () => {
-    if (!selectedCharacter) {
-      alert("Pilih karakter terlebih dahulu!");
+    if (!selectedCharacter || !selectedCharacter.positionId) {
+      alert("Karakter harus berada di papan untuk menggunakan skill!");
       return;
     }
 
