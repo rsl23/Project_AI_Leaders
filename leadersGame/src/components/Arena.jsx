@@ -225,6 +225,18 @@ const Arena = () => {
     }
 
     const characterType = selectedCharacter.cardData.type;
+    const isJailed = SkillManager.isAffectedByJailer(
+      selectedCharacter.positionId,
+      placedCards,
+      turn
+    );
+
+    if (isJailed) {
+      alert(
+        "Skill tidak bisa digunakan! Karakter ini terkena efek Jailer (Geolier) lawan."
+      );
+      return; // Berhenti di sini, skill tidak akan masuk ke mode seleksi
+    }
 
     // Check if already used
     if (activeAbilityUsed[characterType]) {
@@ -864,6 +876,12 @@ const Arena = () => {
   };
 
   const handleTavernierSelectAlly = (position, config) => {
+    // Validasi: Pastikan posisi yang diklik ada di validMovePositions (adjacent ke Tavernier)
+    if (!validMovePositions.includes(position.id)) {
+      console.log("Karakter ini terlalu jauh dari Tavernier!");
+      return;
+    }
+
     const ally = placedCards.find(
       (c) => c.positionId === position.id && c.owner === turn
     );
@@ -1025,6 +1043,9 @@ const Arena = () => {
       finalAvailableCards = [...finalAvailableCards, newCard];
       finalDeck = deck.slice(1);
     }
+
+    // Shuffle available cards untuk randomisasi lebih baik
+    finalAvailableCards = finalAvailableCards.sort(() => Math.random() - 0.5);
 
     setPlacedCards(newPlacedCards);
     setAvailableCards(finalAvailableCards);
@@ -1223,6 +1244,9 @@ const Arena = () => {
         finalAvailableCards = [...newAvailableCards, newCard];
         finalDeck = deck.slice(1);
       }
+
+      // Shuffle available cards untuk randomisasi lebih baik
+      finalAvailableCards = finalAvailableCards.sort(() => Math.random() - 0.5);
 
       setPlacedCards(newPlacedCards);
       setAvailableCards(finalAvailableCards);

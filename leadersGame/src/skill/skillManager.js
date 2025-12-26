@@ -13,55 +13,31 @@ export const BOARD_CONFIG = {
 
 // Map hex-row-col ke Cube Coordinates (x, y, z)
 export const toCube = (positionId) => {
-  // Jika input bukan string (misal: objek atau undefined), cegah crash
-  if (!positionId || typeof positionId !== "string") {
-    // console.warn("toCube menerima input tidak valid:", positionId);
+  if (!positionId || typeof positionId !== "string")
     return { x: 0, y: 0, z: 0 };
-  }
-
   const parts = positionId.split("-");
-  if (parts.length < 3) return { x: 0, y: 0, z: 0 };
+  const col = parseInt(parts[1]);
+  const row = parseInt(parts[2]);
 
-  const r = parseInt(parts[1]); // Row
-  const c = parseInt(parts[2]); // Col
-
-  /**
-   * KONVERSI KHUSUS UNTUK PAPAN KAMU (4,5,6,7,6,5,4)
-   * Kita ubah ke koordinat Axial (q, r) dulu
-   */
-  const axialR = r - 4; // Baris tengah (4) jadi 0
-
-  // Offset kolom agar kolom tengah tetap selaras
-  let axialQ;
-  if (r <= 4) {
-    axialQ = c - 1 - (r - 1); // Penyesuaian baris 1-4 (expanding)
-  } else {
-    axialQ = c - 4; // Penyesuaian baris 5-7 (contracting)
-  }
-
-  // Dari Axial ke Cube (x, y, z)
-  const x = axialQ;
-  const z = axialR;
-  const y = -x - z;
-
-  return { x, y, z };
+  const q = 4 - col;
+  let r = col >= 4 ? row - (8 - col) : row - 4;
+  const s = -q - r;
+  return { x: q, y: r, z: s };
 };
 
 // Kebalikan: Cube ke ID string
 export const fromCube = (x, y, z) => {
-  const axialR = z;
-  const axialQ = x;
+  const col = 4 - x;
+  let row;
 
-  const r = axialR + 4;
-  let c;
-
-  if (r <= 4) {
-    c = axialQ + (r - 1) + 1;
+  if (col >= 4) {
+    row = y + (8 - col);
   } else {
-    c = axialQ + 4;
+    row = y + 4;
   }
 
-  const id = `hex-${r}-${c}`;
+  const id = `hex-${col}-${row}`;
+  // Pastikan petak tersebut memang ada di dalam konfigurasi board
   return isValidPosition(id) ? id : null;
 };
 
@@ -75,10 +51,13 @@ export const getDistance = (pos1, pos2) => {
     Math.abs(a.z - b.z)
   );
 };
+
+// Pengecekan GARIS LURUS (Solusi untuk Bug kamu)
 export const isStraightLine = (pos1, pos2) => {
+  if (!pos1 || !pos2) return false;
   const a = toCube(pos1);
   const b = toCube(pos2);
-  // Di hexagon, garis lurus terjadi jika salah satu sumbu sama
+  // Garis lurus hexagon hanya terjadi jika salah satu sumbu Cube-nya sama
   return a.x === b.x || a.y === b.y || a.z === b.z;
 };
 
@@ -86,62 +65,111 @@ export const isStraightLine = (pos1, pos2) => {
 // CORE HELPER FUNCTIONS
 // ============================================
 
-export const getAdjacentPositions = (
-  positionId,
-  boardConfig = BOARD_CONFIG
-) => {
-  const [_, row, col] = positionId.split("-").map(Number);
-  const maxCols = boardConfig;
-  const adjacent = [];
+export const isVisibleInStraightLine = (fromPos, toPos, placedCards) => {
+  if (!isStraightLine(fromPos, toPos)) return false;
+  if (fromPos === toPos) return false;
 
-  // Horizontal neighbors
-  if (col > 1) adjacent.push(`hex-${row}-${col - 1}`);
-  if (col < maxCols[row]) adjacent.push(`hex-${row}-${col + 1}`);
+  const start = toCube(fromPos);
+  const end = toCube(toPos);
+  const dist = getDistance(fromPos, toPos);
 
-  // Vertical & diagonal neighbors
-  const neighbors = [];
+  // Cek setiap langkah di antara petak start dan target
+  for (let i = 1; i < dist; i++) {
+    const t = i / dist;
+    const x = Math.round(start.x + (end.x - start.x) * t);
+    const y = Math.round(start.y + (end.y - start.y) * t);
+    const z = Math.round(start.z + (end.z - start.z) * t);
 
-  // Row above (row - 1)
-  if (row > 1) {
-    const prevRowCols = maxCols[row - 1];
-    if (row <= 4) {
-      // Rows 1-4: expanding rows
-      if (col - 1 >= 1 && col - 1 <= prevRowCols)
-        neighbors.push({ r: row - 1, c: col - 1 });
-      if (col >= 1 && col <= prevRowCols)
-        neighbors.push({ r: row - 1, c: col });
-    } else {
-      // Rows 5-7: contracting rows
-      if (col >= 1 && col <= prevRowCols)
-        neighbors.push({ r: row - 1, c: col });
-      if (col + 1 >= 1 && col + 1 <= prevRowCols)
-        neighbors.push({ r: row - 1, c: col + 1 });
+    const midId = fromCube(x, y, z);
+    if (midId && placedCards.some((card) => card.positionId === midId)) {
+      return false; // Ada rintangan
     }
   }
+  return true;
+};
 
-  // Row below (row + 1)
-  if (row < 7) {
-    const nextRowCols = maxCols[row + 1];
-    if (row < 4) {
-      // Rows 1-3: expanding rows
-      if (col >= 1 && col <= nextRowCols)
-        neighbors.push({ r: row + 1, c: col });
-      if (col + 1 >= 1 && col + 1 <= nextRowCols)
-        neighbors.push({ r: row + 1, c: col + 1 });
-    } else {
-      // Rows 4-6: contracting rows
-      if (col - 1 >= 1 && col - 1 <= nextRowCols)
-        neighbors.push({ r: row + 1, c: col - 1 });
-      if (col >= 1 && col <= nextRowCols)
-        neighbors.push({ r: row + 1, c: col });
-    }
-  }
+// Khusus Archer: Cek apakah tepat 2 petak dan searah
+export const isTwoSpacesAwayInStraightLine = (pos1, pos2) => {
+  return isStraightLine(pos1, pos2) && getDistance(pos1, pos2) === 2;
+};
 
-  neighbors.forEach(({ r, c }) => {
-    adjacent.push(`hex-${r}-${c}`);
-  });
+// Sederhanakan isAdjacent
+export const isAdjacent = (pos1, pos2) => {
+  return getDistance(pos1, pos2) === 1;
+};
 
-  return adjacent;
+// export const getAdjacentPositions = (
+//   positionId,
+//   boardConfig = BOARD_CONFIG
+// ) => {
+//   const [_, row, col] = positionId.split("-").map(Number);
+//   const maxCols = boardConfig;
+//   const adjacent = [];
+
+//   // Horizontal neighbors
+//   if (col > 1) adjacent.push(`hex-${row}-${col - 1}`);
+//   if (col < maxCols[row]) adjacent.push(`hex-${row}-${col + 1}`);
+
+//   // Vertical & diagonal neighbors
+//   const neighbors = [];
+
+//   // Row above (row - 1)
+//   if (row > 1) {
+//     const prevRowCols = maxCols[row - 1];
+//     if (row <= 4) {
+//       // Rows 1-4: expanding rows
+//       if (col - 1 >= 1 && col - 1 <= prevRowCols)
+//         neighbors.push({ r: row - 1, c: col - 1 });
+//       if (col >= 1 && col <= prevRowCols)
+//         neighbors.push({ r: row - 1, c: col });
+//     } else {
+//       // Rows 5-7: contracting rows
+//       if (col >= 1 && col <= prevRowCols)
+//         neighbors.push({ r: row - 1, c: col });
+//       if (col + 1 >= 1 && col + 1 <= prevRowCols)
+//         neighbors.push({ r: row - 1, c: col + 1 });
+//     }
+//   }
+
+//   // Row below (row + 1)
+//   if (row < 7) {
+//     const nextRowCols = maxCols[row + 1];
+//     if (row < 4) {
+//       // Rows 1-3: expanding rows
+//       if (col >= 1 && col <= nextRowCols)
+//         neighbors.push({ r: row + 1, c: col });
+//       if (col + 1 >= 1 && col + 1 <= nextRowCols)
+//         neighbors.push({ r: row + 1, c: col + 1 });
+//     } else {
+//       // Rows 4-6: contracting rows
+//       if (col - 1 >= 1 && col - 1 <= nextRowCols)
+//         neighbors.push({ r: row + 1, c: col - 1 });
+//       if (col >= 1 && col <= nextRowCols)
+//         neighbors.push({ r: row + 1, c: col });
+//     }
+//   }
+
+//   neighbors.forEach(({ r, c }) => {
+//     adjacent.push(`hex-${r}-${c}`);
+//   });
+
+//   return adjacent;
+// };
+
+export const getAdjacentPositions = (positionId) => {
+  const cube = toCube(positionId);
+  const directions = [
+    { x: +1, y: -1, z: 0 },
+    { x: +1, y: 0, z: -1 },
+    { x: 0, y: +1, z: -1 },
+    { x: -1, y: +1, z: 0 },
+    { x: -1, y: 0, z: +1 },
+    { x: 0, y: -1, z: +1 },
+  ];
+
+  return directions
+    .map((d) => fromCube(cube.x + d.x, cube.y + d.y, cube.z + d.z))
+    .filter((id) => id !== null); // Hanya ambil yang ada di dalam board
 };
 
 export const getDirection = (fromPos, toPos) => {
@@ -255,29 +283,29 @@ export const getNextPositionInDirection = (
 //   return false;
 // };
 
-export const isVisibleInStraightLine = (fromPos, toPos, placedCards) => {
-  if (!isStraightLine(fromPos, toPos)) return false;
+// export const isVisibleInStraightLine = (fromPos, toPos, placedCards) => {
+//   if (!isStraightLine(fromPos, toPos)) return false;
 
-  const start = toCube(fromPos);
-  const end = toCube(toPos);
-  const dist = getDistance(fromPos, toPos);
+//   const start = toCube(fromPos);
+//   const end = toCube(toPos);
+//   const dist = getDistance(fromPos, toPos);
 
-  // Cek setiap petak di antara (tidak termasuk start dan end)
-  for (let i = 1; i < dist; i++) {
-    const t = i / dist;
-    // Interpolasi linear koordinat cube
-    const midX = Math.round(start.x + (end.x - start.x) * t);
-    const midY = Math.round(start.y + (end.y - start.y) * t);
-    const midZ = Math.round(start.z + (end.z - start.z) * t);
+//   // Cek setiap petak di antara (tidak termasuk start dan end)
+//   for (let i = 1; i < dist; i++) {
+//     const t = i / dist;
+//     // Interpolasi linear koordinat cube
+//     const midX = Math.round(start.x + (end.x - start.x) * t);
+//     const midY = Math.round(start.y + (end.y - start.y) * t);
+//     const midZ = Math.round(start.z + (end.z - start.z) * t);
 
-    const midId = fromCube(midX, midY, midZ);
-    if (midId) {
-      const isOccupied = placedCards.some((card) => card.positionId === midId);
-      if (isOccupied) return false; // Ada penghalang
-    }
-  }
-  return true;
-};
+//     const midId = fromCube(midX, midY, midZ);
+//     if (midId) {
+//       const isOccupied = placedCards.some((card) => card.positionId === midId);
+//       if (isOccupied) return false; // Ada penghalang
+//     }
+//   }
+//   return true;
+// };
 
 // Walk in a consistent hexagonal direction from start toward target
 const walkInDirection = (start, firstStep, target, boardConfig) => {
@@ -409,9 +437,9 @@ const isSameHexDirection = (dr1, dc1, startRow1, dr2, dc2, startRow2) => {
   return false;
 };
 
-export const isAdjacent = (pos1, pos2, boardConfig = BOARD_CONFIG) => {
-  return getAdjacentPositions(pos1, boardConfig).includes(pos2);
-};
+// export const isAdjacent = (pos1, pos2, boardConfig = BOARD_CONFIG) => {
+//   return getAdjacentPositions(pos1, boardConfig).includes(pos2);
+// };
 
 export const getDistanceInStraightLine = (pos1, pos2) => {
   const [_, row1, col1] = pos1.split("-").map(Number);
@@ -421,70 +449,70 @@ export const getDistanceInStraightLine = (pos1, pos2) => {
 
 // Check if two positions are exactly 2 spaces apart in a straight hexagonal line
 // Used for Archer passive ability (does not require visibility)
-export const isTwoSpacesAwayInStraightLine = (
-  pos1,
-  pos2,
-  boardConfig = BOARD_CONFIG
-) => {
-  if (pos1 === pos2) return false;
+// export const isTwoSpacesAwayInStraightLine = (
+//   pos1,
+//   pos2,
+//   boardConfig = BOARD_CONFIG
+// ) => {
+//   if (pos1 === pos2) return false;
 
-  // Try all 6 directions from pos1
-  const adjacent = getAdjacentPositions(pos1, boardConfig);
+//   // Try all 6 directions from pos1
+//   const adjacent = getAdjacentPositions(pos1, boardConfig);
 
-  for (const firstStep of adjacent) {
-    // Get the direction from pos1 to firstStep
-    const [_, r1, c1] = pos1.split("-").map(Number);
-    const [__, r2, c2] = firstStep.split("-").map(Number);
-    const initialDr = r2 - r1;
-    const initialDc = c2 - c1;
+//   for (const firstStep of adjacent) {
+//     // Get the direction from pos1 to firstStep
+//     const [_, r1, c1] = pos1.split("-").map(Number);
+//     const [__, r2, c2] = firstStep.split("-").map(Number);
+//     const initialDr = r2 - r1;
+//     const initialDc = c2 - c1;
 
-    // Try to take one more step in the same direction
-    const adjacentFromFirst = getAdjacentPositions(firstStep, boardConfig);
+//     // Try to take one more step in the same direction
+//     const adjacentFromFirst = getAdjacentPositions(firstStep, boardConfig);
 
-    for (const secondStep of adjacentFromFirst) {
-      if (secondStep === pos2) {
-        // Found pos2 at 2 steps! Verify it's in EXACTLY the same direction
-        const [___, r3, c3] = firstStep.split("-").map(Number);
-        const [____, r4, c4] = secondStep.split("-").map(Number);
-        const secondDr = r4 - r3;
-        const secondDc = c4 - c3;
+//     for (const secondStep of adjacentFromFirst) {
+//       if (secondStep === pos2) {
+//         // Found pos2 at 2 steps! Verify it's in EXACTLY the same direction
+//         const [___, r3, c3] = firstStep.split("-").map(Number);
+//         const [____, r4, c4] = secondStep.split("-").map(Number);
+//         const secondDr = r4 - r3;
+//         const secondDc = c4 - c3;
 
-        // For EXACTLY 2 steps, we need stricter validation
-        // The direction vectors must be very similar (accounting for hexagonal transitions)
+//         // For EXACTLY 2 steps, we need stricter validation
+//         // The direction vectors must be very similar (accounting for hexagonal transitions)
 
-        // Both steps must have same row direction (or both horizontal)
-        if (initialDr !== secondDr) {
-          continue; // Different row directions = not straight
-        }
+//         // Both steps must have same row direction (or both horizontal)
+//         if (initialDr !== secondDr) {
+//           continue; // Different row directions = not straight
+//         }
 
-        // For horizontal lines (dr=0), deltaCol must be same sign
-        if (initialDr === 0) {
-          if (Math.sign(initialDc) === Math.sign(secondDc)) {
-            return true;
-          }
-          continue;
-        }
+//         // For horizontal lines (dr=0), deltaCol must be same sign
+//         if (initialDr === 0) {
+//           if (Math.sign(initialDc) === Math.sign(secondDc)) {
+//             return true;
+//           }
+//           continue;
+//         }
 
-        // For diagonal/vertical lines, deltaCol can vary slightly due to offset
-        // but should be consistent with the hexagonal geometry
-        // Key: column direction should not reverse
-        if (Math.abs(initialDc - secondDc) <= 1) {
-          // Allow deltaCol to differ by at most 1 (for row transition effects)
-          // But both should be in "same general direction"
-          if (
-            initialDc === 0 ||
-            secondDc === 0 ||
-            Math.sign(initialDc) === Math.sign(secondDc)
-          ) {
-            return true;
-          }
-        }
-      }
-    }
-  }
+//         // For diagonal/vertical lines, deltaCol can vary slightly due to offset
+//         // but should be consistent with the hexagonal geometry
+//         // Key: column direction should not reverse
+//         if (Math.abs(initialDc - secondDc) <= 1) {
+//           // Allow deltaCol to differ by at most 1 (for row transition effects)
+//           // But both should be in "same general direction"
+//           if (
+//             initialDc === 0 ||
+//             secondDc === 0 ||
+//             Math.sign(initialDc) === Math.sign(secondDc)
+//           ) {
+//             return true;
+//           }
+//         }
+//       }
+//     }
+//   }
 
-  return false;
-};
+//   return false;
+// };
 
 // ============================================
 // SKILL-SPECIFIC FUNCTIONS
@@ -494,30 +522,45 @@ export const getAcrobateJumpPositions = (
   characterPos,
   placedCards,
   boardConfig = BOARD_CONFIG,
-  excludePosition = null // Position to exclude (the character we just jumped over)
+  excludePosition = null // Petak karakter yang baru saja dilompati (untuk lompatan ke-2)
 ) => {
   const validJumps = [];
-  const adjacentPositions = getAdjacentPositions(characterPos, boardConfig);
+  const startCube = toCube(characterPos);
 
-  adjacentPositions.forEach((adjPos) => {
-    // Skip the position we just jumped from (to prevent jumping back over same character)
-    if (adjPos === excludePosition) return;
+  // 1. Dapatkan semua posisi tetangga (Adjacent)
+  const neighbors = getAdjacentPositions(characterPos, boardConfig);
 
-    const hasCharacter = placedCards.find((card) => card.positionId === adjPos);
-    if (hasCharacter) {
-      const direction = getDirection(characterPos, adjPos);
-      const landingPos = getNextPositionInDirection(
-        adjPos,
-        direction,
-        boardConfig
+  neighbors.forEach((adjPos) => {
+    // Cari apakah ada karakter di petak tetangga ini
+    const charToJumpOver = placedCards.find(
+      (card) => card.positionId === adjPos
+    );
+
+    // Syarat: Harus ada karakter DAN bukan karakter yang baru saja dilompati
+    if (charToJumpOver && adjPos !== excludePosition) {
+      const neighborCube = toCube(adjPos);
+
+      // 2. Hitung posisi landing (Lurus melewati karakter tersebut)
+      // Rumus: Landing = Neighbor + (Neighbor - Start)
+      const landingCube = {
+        x: neighborCube.x + (neighborCube.x - startCube.x),
+        y: neighborCube.y + (neighborCube.y - startCube.y),
+        z: neighborCube.z + (neighborCube.z - startCube.z),
+      };
+
+      const landingPosId = fromCube(
+        landingCube.x,
+        landingCube.y,
+        landingCube.z
       );
 
-      if (landingPos) {
+      // 3. Validasi Landing: Harus ada di board dan kosong
+      if (landingPosId) {
         const isOccupied = placedCards.find(
-          (card) => card.positionId === landingPos
+          (card) => card.positionId === landingPosId
         );
         if (!isOccupied) {
-          validJumps.push(landingPos);
+          validJumps.push(landingPosId);
         }
       }
     }
@@ -563,35 +606,47 @@ export const getCogneurPushPositions = (
   placedCards,
   boardConfig = BOARD_CONFIG
 ) => {
-  // Get direction from Cogneur to Enemy
-  const attackDir = getDirection(cogneurPos, enemyPos);
+  const attackerCube = toCube(cogneurPos);
+  const targetCube = toCube(enemyPos);
 
-  // Get all 6 adjacent positions around the enemy
-  const allAdjacentToEnemy = getAdjacentPositions(enemyPos, boardConfig);
+  // Vektor arah dari Cogneur ke Musuh
+  const attackDir = {
+    x: targetCube.x - attackerCube.x,
+    y: targetCube.y - attackerCube.y,
+    z: targetCube.z - attackerCube.z,
+  };
 
-  // Filter to get exactly 3 positions "behind" the enemy
-  const pushPositions = allAdjacentToEnemy.filter((pos) => {
-    // Cannot push back to where Cogneur is standing
+  // Ambil semua tetangga di sekitar musuh
+  const neighborsOfEnemy = getAdjacentPositions(enemyPos, boardConfig);
+
+  // Filter 3 petak yang berada di "belakang" musuh
+  const validPushPositions = neighborsOfEnemy.filter((pos) => {
+    // 1. Petak tidak boleh posisi Cogneur berdiri sekarang
     if (pos === cogneurPos) return false;
 
-    const dirToPos = getDirection(enemyPos, pos);
+    // 2. Petak harus kosong
+    const isOccupied = placedCards.find((c) => c.positionId === pos);
+    if (isOccupied) return false;
 
-    // Calculate dot product between attack direction and direction to push position
+    // 3. Logika Matematika Dot Product
+    const neighborCube = toCube(pos);
+    const pushDir = {
+      x: neighborCube.x - targetCube.x,
+      y: neighborCube.y - targetCube.y,
+      z: neighborCube.z - targetCube.z,
+    };
+
+    // Dot product > 0 artinya sudut antara arah dorong dan arah serang tajam (searah)
+    // Ini akan secara otomatis mengambil 3 petak di belakang musuh
     const dotProduct =
-      attackDir.deltaRow * dirToPos.deltaRow +
-      attackDir.deltaCol * dirToPos.deltaCol;
+      attackDir.x * pushDir.x +
+      attackDir.y * pushDir.y +
+      attackDir.z * pushDir.z;
 
-    // Position is "behind" if dot product > 0 (strictly positive angle)
-    // This gives us 3 positions: straight back + left-back + right-back
-    const isBehind = dotProduct > 0;
-
-    // Also check if position is empty
-    const isEmpty = !placedCards.find((c) => c.positionId === pos);
-
-    return isBehind && isEmpty;
+    return dotProduct > 0;
   });
 
-  return pushPositions;
+  return validPushPositions;
 };
 
 export const getGardeRoyalTeleportPositions = (
@@ -694,7 +749,7 @@ export const getTavernierAllies = (
   const adjacentPositions = getAdjacentPositions(characterPos, boardConfig);
   return adjacentPositions.filter((pos) => {
     const char = placedCards.find((c) => c.positionId === pos);
-    return char && char.owner === turn && !char.isKing;
+    return char && char.owner === turn;
   });
 };
 
@@ -704,23 +759,28 @@ export const getIllusionistTargets = (
   boardConfig = BOARD_CONFIG
 ) => {
   const targets = [];
+
   placedCards.forEach((card) => {
-    if (
-      card.positionId !== characterPos &&
-      !isAdjacent(characterPos, card.positionId, boardConfig)
-    ) {
-      if (
-        isVisibleInStraightLine(
-          characterPos,
-          card.positionId,
-          placedCards,
-          boardConfig
-        )
-      ) {
-        targets.push(card.positionId);
+    const targetPos = card.positionId;
+
+    // Syarat Illusionist:
+    // 1. Bukan dirinya sendiri
+    // 2. Tidak boleh bersebelahan (Non-adjacent)
+    // 3. Harus satu garis lurus (isStraightLine)
+    // 4. Tidak ada rintangan di antaranya (Visible)
+
+    if (targetPos !== characterPos) {
+      const distance = getDistance(characterPos, targetPos);
+      const inLine = isStraightLine(characterPos, targetPos);
+
+      if (distance > 1 && inLine) {
+        if (isVisibleInStraightLine(characterPos, targetPos, placedCards)) {
+          targets.push(targetPos);
+        }
       }
     }
   });
+
   return targets;
 };
 
@@ -738,6 +798,19 @@ export const checkJailerAdjacent = (
   return adjacentPositions.some((pos) => {
     const char = placedCards.find((c) => c.positionId === pos);
     return char && char.cardData.type === "Geolier" && char.owner !== turn;
+  });
+};
+
+// Di skillManager.js
+export const isAffectedByJailer = (characterPos, placedCards, currentTurn) => {
+  const adjacentPositions = getAdjacentPositions(characterPos);
+
+  return adjacentPositions.some((pos) => {
+    const char = placedCards.find((c) => c.positionId === pos);
+    // Cek jika ada kartu lawan tipe "Geolier" di sebelah
+    return (
+      char && char.cardData.type === "Geolier" && char.owner !== currentTurn
+    );
   });
 };
 
