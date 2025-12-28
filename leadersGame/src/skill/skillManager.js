@@ -814,6 +814,27 @@ export const isAffectedByJailer = (characterPos, placedCards, currentTurn) => {
   });
 };
 
+export const isProtectedFromMovement = (targetPos, placedCards) => {
+  const targetChar = placedCards.find((c) => c.positionId === targetPos);
+  if (!targetChar) return false;
+
+  const owner = targetChar.owner;
+
+  // 1. Cek jika karakter itu sendiri adalah Protector
+  if (targetChar.cardData.type === "Protector") return true;
+
+  // 2. Cek jika ada teman tipe Protector di sebelahnya
+  const adjacentPos = getAdjacentPositions(targetPos);
+  return adjacentPos.some((pos) => {
+    const neighbor = placedCards.find((c) => c.positionId === pos);
+    return (
+      neighbor &&
+      neighbor.cardData.type === "Protector" &&
+      neighbor.owner === owner
+    ); // Harus teman (owner sama)
+  });
+};
+
 export const checkProtectorAdjacent = (
   characterPos,
   placedCards,

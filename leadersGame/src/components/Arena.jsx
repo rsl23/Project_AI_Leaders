@@ -772,7 +772,7 @@ const Arena = () => {
   const handleLanceSelectTarget = (position, config) => {
     // Validate that selected position is in valid targets (must be in straight line)
     if (!validMovePositions.includes(position.id)) {
-      alert("Pilih karakter yang berada dalam 1 garis lurus!");
+      alert("Pilih karakter yang valid");
       return;
     }
 

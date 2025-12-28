@@ -12,3 +12,4 @@ passive
 1. assasin done
 2. archer done
 3. jailer done
+4. protector done
