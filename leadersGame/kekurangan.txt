@@ -1,5 +1,6 @@
+active
 1. royal guard done
-2. cavalier/rider done tapi tidak bisa gerak kalau ada hero menghalangi.
+2. cavalier/rider done 
 3. rodeuse done
 4. cogneur/bruiser done
 5. accrobate done
@@ -13,3 +14,8 @@ passive
 2. archer done
 3. jailer done
 4. protector done
+5. Vizir done
+
+special
+1. Cub and oldman done
+2. nemesis done (gk ada biru nandain arah gerak)

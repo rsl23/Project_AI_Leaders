@@ -48,26 +48,21 @@ export const handleCogneurAbility = (
   turn,
   boardConfig
 ) => {
-  const enemies = SkillManager.getAdjacentPositions(
+  const adjacentEnemies = SkillManager.getAdjacentPositions(
     character.positionId,
     boardConfig
   ).filter((pos) => {
     const char = placedCards.find((c) => c.positionId === pos);
-    // Syarat: Musuh DAN tidak dilindungi Protector
-    return (
-      char &&
-      char.owner !== turn &&
-      !SkillManager.isProtectedFromMovement(pos, placedCards)
-    );
+    return char && char.owner !== turn;
   });
 
-  if (enemies.length === 0) {
-    throw new Error("Musuh di sekitar dilindungi oleh Protector!");
+  if (adjacentEnemies.length === 0) {
+    throw new Error("Tidak ada musuh adjacent!");
   }
 
   return {
     abilityMode: "cogneur_select_enemy",
-    validMovePositions: enemies,
+    validMovePositions: adjacentEnemies,
   };
 };
 
@@ -103,24 +98,19 @@ export const handleLanceGrappinAbility = (
   placedCards,
   boardConfig
 ) => {
-  const allTargets = SkillManager.getLanceGrappinTargets(
+  const targets = SkillManager.getLanceGrappinTargets(
     character.positionId,
     placedCards,
     boardConfig
   );
 
-  // FILTER: Hilangkan target yang dilindungi Protector
-  const validTargets = allTargets.filter(
-    (targetPos) => !SkillManager.isProtectedFromMovement(targetPos, placedCards)
-  );
-
-  if (validTargets.length === 0) {
-    throw new Error("Target terhalang atau dilindungi oleh Protector!");
+  if (targets.length === 0) {
+    throw new Error("Tidak ada karakter yang visible dalam garis lurus!");
   }
 
   return {
     abilityMode: "lance_select_target",
-    validMovePositions: validTargets,
+    validMovePositions: targets,
   };
 };
 
@@ -137,17 +127,13 @@ export const handleManipulatorAbility = (
     boardConfig
   );
 
-  const validTargets = targets.filter(
-    (targetPos) => !SkillManager.isProtectedFromMovement(targetPos, placedCards)
-  );
-
-  if (validTargets.length === 0) {
-    throw new Error("Tidak ada musuh non-adjacent yang dapat dipindah!");
+  if (targets.length === 0) {
+    throw new Error("Tidak ada musuh non-adjacent yang visible!");
   }
 
   return {
     abilityMode: "manipulator_select_target",
-    validMovePositions: validTargets,
+    validMovePositions: targets,
   };
 };
 
@@ -215,17 +201,13 @@ export const handleIllusionistAbility = (
   boardConfig
 ) => {
   // Panggil fungsi yang sudah kita perbaiki di atas
-  const allTargets = SkillManager.getIllusionistTargets(
+  const targets = SkillManager.getIllusionistTargets(
     character.positionId,
     placedCards,
     boardConfig
   );
 
-  const validTargets = allTargets.filter(
-    (targetPos) => !SkillManager.isProtectedFromMovement(targetPos, placedCards)
-  );
-
-  if (validTargets.length === 0) {
+  if (targets.length === 0) {
     throw new Error(
       "Tidak ada karakter valid (non-adjacent & lurus) yang terlihat!"
     );
@@ -233,7 +215,7 @@ export const handleIllusionistAbility = (
 
   return {
     abilityMode: "illusionist_select_target",
-    validMovePositions: validTargets,
+    validMovePositions: targets,
   };
 };
 // ============================================
@@ -303,11 +285,6 @@ export const executeCogneurPush = (
   placedCards,
   boardConfig
 ) => {
-  if (SkillManager.isProtectedFromMovement(enemyPos, placedCards)) {
-    console.warn("Gagal mendorong: Target dilindungi Protector!");
-    return placedCards;
-  }
-
   // 1. Pindahkan musuh ke petak dorong yang dipilih
   let newPlacedCards = placedCards.map((card) =>
     card.positionId === enemyPos ? { ...card, positionId: pushPos } : card
@@ -357,13 +334,108 @@ export const executeLanceGrappin = (
   placedCards,
   boardConfig
 ) => {
+  // console.log("LancePos:", lancePos, "TargetPos:", targetPos);
+
+  // // Jika LancePos adalah objek, ambil ID-nya
+  // const from = typeof lancePos === "object" ? lancePos.positionId : lancePos;
+  // const to = typeof targetPos === "object" ? targetPos.positionId : targetPos;
+
+  // // Baru gunakan 'from' dan 'to' untuk kalkulasi
+  // const startCube = toCube(from);
+  // // Get normalized direction (unit vector)
+  // const fullDirection = SkillManager.getDirection(from, to);
+  // const distance = Math.max(
+  //   Math.abs(fullDirection.deltaRow),
+  //   Math.abs(fullDirection.deltaCol)
+  // );
+  // const direction = {
+  //   deltaRow: distance > 0 ? fullDirection.deltaRow / distance : 0,
+  //   deltaCol: distance > 0 ? fullDirection.deltaCol / distance : 0,
+  // };
+
+  // let newPlacedCards = [...placedCards];
+
+  // if (shouldMoveToTarget) {
+  //   // Option 1: Move Lance Grappin along straight line to position adjacent to target
+  //   // Walk along the straight line from Lance to Target
+  //   let currentPos = from;
+  //   let lastEmptyPos = null;
+
+  //   while (currentPos !== to) {
+  //     const nextPos = SkillManager.getNextPositionInDirection(
+  //       currentPos,
+  //       to,
+  //       1
+  //     );
+
+  //     if (!nextPos) break;
+
+  //     // Don't land on target position
+  //     if (nextPos === targetPos) {
+  //       break;
+  //     }
+
+  //     // Check if this position is occupied by another character
+  //     const isOccupied = newPlacedCards.find((c) => c.positionId === nextPos);
+
+  //     // Only consider empty positions as potential landing spots
+  //     if (!isOccupied) {
+  //       lastEmptyPos = nextPos;
+  //     }
+
+  //     // Check if next position is adjacent to target
+  //     if (SkillManager.isAdjacent(nextPos, targetPos, boardConfig)) {
+  //       // This is close enough - stop here if empty
+  //       if (!isOccupied) {
+  //         lastEmptyPos = nextPos;
+  //       }
+  //       break;
+  //     }
+
+  //     currentPos = nextPos;
+  //   }
+
+  //   if (lastEmptyPos) {
+  //     // Move LanceGrappin along the line to position adjacent to target
+  //     newPlacedCards = newPlacedCards.map((card) =>
+  //       card.positionId === lancePos
+  //         ? { ...card, positionId: lastEmptyPos }
+  //         : card
+  //     );
+  //   }
+  // } else {
+  //   // Option 2: Pull target along straight line to be adjacent to Lance
+  //   // Find position adjacent to Lance in the SAME direction as target
+  //   const adjacentPositions = SkillManager.getAdjacentPositions(
+  //     lancePos,
+  //     boardConfig
+  //   );
+
+  //   // Find the adjacent position that is in the straight line toward target
+  //   const dragPos = adjacentPositions.find((pos) => {
+  //     const isEmpty = !newPlacedCards.find((c) => c.positionId === pos);
+  //     if (!isEmpty) return false;
+
+  //     const dirToPos = SkillManager.getDirection(lancePos, pos);
+  //     // Must be exact same direction as toward target (normalized)
+  //     return (
+  //       dirToPos.deltaRow === direction.deltaRow &&
+  //       dirToPos.deltaCol === direction.deltaCol
+  //     );
+  //   });
+
+  //   if (dragPos) {
+  //     // Move target along the line to position adjacent to Lance
+  //     newPlacedCards = newPlacedCards.map((card) =>
+  //       card.positionId === targetPos ? { ...card, positionId: dragPos } : card
+  //     );
+  //   }
+  // }
+
+  // return newPlacedCards;
+  ///////////////////////////////////////////////////////////////////////////////////
+
   //hasil baru
-
-  if (SkillManager.isProtectedFromMovement(targetPos, placedCards)) {
-    console.warn("Gagal mendorong: Target dilindungi Protector!");
-    return placedCards;
-  }
-
   let newPlacedCards = [...placedCards];
 
   if (shouldMoveToTarget) {
@@ -422,12 +494,6 @@ export const executeIllusionistSwitch = (
   targetPos,
   placedCards
 ) => {
-  // Cek terakhir sebelum dorong
-  if (SkillManager.isProtectedFromMovement(targetPos, placedCards)) {
-    console.warn("Gagal mendorong: Target dilindungi Protector!");
-    return placedCards;
-  }
-
   const newPlacedCards = placedCards.map((card) => {
     if (card.positionId === illusionistPos) {
       return { ...card, positionId: targetPos };

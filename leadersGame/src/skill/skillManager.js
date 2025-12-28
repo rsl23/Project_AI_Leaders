@@ -591,6 +591,7 @@ export const getCavalierValidMoves = (
       const isPos1Empty = !placedCards.find((c) => c.positionId === pos1);
       const isPos2Empty = !placedCards.find((c) => c.positionId === pos2);
       // Both positions must be empty
+      //kalau mau bisa loncatin karakter, ganti jadi: if (isPos2Empty) {
       if (isPos1Empty && isPos2Empty) {
         validMoves.push(pos2);
       }
@@ -858,34 +859,67 @@ export const calculateNemesisMovement = (
   placedCards,
   boardConfig = BOARD_CONFIG
 ) => {
-  if (!nemesisPos || !opponentLeaderPos)
-    return { validPositions: [], canMove: false };
+  if (!nemesisPos)
+    return {
+      validPositions: [],
+      twoSpacePositions: [],
+      oneSpacePositions: [],
+      canMove: false,
+    };
 
-  const direction = getDirection(nemesisPos, opponentLeaderPos);
+  // Dapatkan semua posisi adjacent dari Nemesis (langkah 1)
+  const adjacentPositions = getAdjacentPositions(nemesisPos, boardConfig);
 
-  // Try to move 2 spaces in direction
-  let firstMove = getNextPositionInDirection(
-    nemesisPos,
-    direction,
-    boardConfig
-  );
-  let secondMove = firstMove
-    ? getNextPositionInDirection(firstMove, direction, boardConfig)
-    : null;
+  const twoSpacePositions = new Set(); // Posisi 2 langkah yang valid
+  const oneSpacePositions = new Set(); // Posisi 1 langkah yang valid
 
-  // Check if positions are valid and empty
-  const validPositions = [];
+  // Untuk setiap posisi adjacent (langkah 1)
+  for (const firstStep of adjacentPositions) {
+    // Cek apakah langkah 1 kosong (bisa dilewati)
+    const firstStepOccupied = placedCards.find(
+      (c) => c.positionId === firstStep
+    );
 
-  if (firstMove && !placedCards.find((c) => c.positionId === firstMove)) {
-    validPositions.push(firstMove);
+    if (!firstStepOccupied) {
+      // Langkah 1 kosong, bisa dijadikan posisi 1 langkah
+      oneSpacePositions.add(firstStep);
+
+      // Dari posisi langkah 1, cari semua posisi langkah 2
+      const secondStepPositions = getAdjacentPositions(firstStep, boardConfig);
+
+      for (const secondStep of secondStepPositions) {
+        // Langkah 2 tidak boleh kembali ke posisi awal Nemesis
+        if (secondStep === nemesisPos) continue;
+
+        // Cek apakah langkah 2 kosong
+        const secondStepOccupied = placedCards.find(
+          (c) => c.positionId === secondStep
+        );
+
+        if (!secondStepOccupied) {
+          twoSpacePositions.add(secondStep);
+        }
+      }
+    }
   }
 
-  if (secondMove && !placedCards.find((c) => c.positionId === secondMove)) {
-    validPositions.push(secondMove);
-  }
+  // Convert Set ke Array
+  const twoSpaceArray = Array.from(twoSpacePositions);
+  const oneSpaceArray = Array.from(oneSpacePositions);
+
+  console.log("🔍 Nemesis Movement Calculation:");
+  console.log("- Nemesis pos:", nemesisPos);
+  console.log("- Two-space positions:", twoSpaceArray);
+  console.log("- One-space positions:", oneSpaceArray);
+
+  // Prioritas: 2 langkah dulu, jika tidak ada baru 1 langkah
+  const validPositions =
+    twoSpaceArray.length > 0 ? twoSpaceArray : oneSpaceArray;
 
   return {
     validPositions,
+    twoSpacePositions: twoSpaceArray,
+    oneSpacePositions: oneSpaceArray,
     canMove: validPositions.length > 0,
   };
 };

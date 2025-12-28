@@ -1,12 +1,19 @@
 import React from "react";
 
 const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
-  // Filter karakter untuk masing-masing player (exclude king untuk count, tapi include untuk display)
+  // Filter karakter untuk masing-masing player (exclude king dan ourson untuk count dan display)
   const playerCards =
-    placedCards?.filter((card) => card.owner === "player" && !card.isKing) ||
-    [];
+    placedCards?.filter(
+      (card) => card.owner === "player" && !card.isKing && !card.isOurson
+    ) || [];
   const enemyCards =
-    placedCards?.filter((card) => card.owner === "enemy" && !card.isKing) || [];
+    placedCards?.filter(
+      (card) => card.owner === "enemy" && !card.isKing && !card.isOurson
+    ) || [];
+
+  // Max selalu 4 (VieilOurs + Ourson dihitung 1)
+  const playerMaxChars = 4;
+  const enemyMaxChars = 4;
 
   // Get king cards
   const playerKing = placedCards?.find(
@@ -39,9 +46,10 @@ const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
     return cardMap[type] || "";
   };
 
-  // Render card deck dengan king di slot pertama + maksimal 4 karakter recruited (total 5)
+  // Render card deck dengan king di slot pertama + maksimal 4 karakter recruited
   const renderCardDeck = (cards, kingCard, isPlayer) => {
-    const maxRecruitedCards = 4; // Max 4 recruited + 1 king = 5 total
+    // Max selalu 4 recruited (VieilOurs + Ourson dihitung 1, dan Ourson tidak tampil)
+    const maxRecruitedCards = 4;
     const displayedCards = cards.slice(0, maxRecruitedCards);
     const emptySlots = maxRecruitedCards - displayedCards.length;
 
@@ -62,7 +70,7 @@ const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
           />
         </div>
 
-        {/* Recruited Characters - Max 4 slots */}
+        {/* Recruited Characters - Max 4 atau 5 slots */}
         {displayedCards.map((card, index) => (
           <div
             key={index}
@@ -76,7 +84,7 @@ const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
           </div>
         ))}
 
-        {/* Empty slots - Fill remaining up to 4 */}
+        {/* Empty slots - Fill remaining up to maxRecruitedCards */}
         {Array.from({ length: emptySlots }).map((_, index) => (
           <div
             key={`empty-${index}`}
@@ -110,7 +118,7 @@ const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
               Characters:
             </span>
             <span className="text-white font-bold text-sm">
-              {playerCards.length}/5
+              {playerCards.length}/{playerMaxChars}
             </span>
           </div>
         </div>
@@ -140,7 +148,7 @@ const GameInfo = ({ placedCards, turn, playerColor, enemyColor }) => {
               Characters:
             </span>
             <span className="text-white font-bold text-sm">
-              {enemyCards.length}/5
+              {enemyCards.length}/{enemyMaxChars}
             </span>
           </div>
         </div>

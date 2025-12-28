@@ -46,6 +46,23 @@ const Arena = () => {
     selectedRecruitmentCard: null, // Kartu yang dipilih
     selectingPosition: false, // Sedang pilih posisi
   });
+  const [pendingOurson, setPendingOurson] = useState(null); // Track Ourson yang perlu ditempatkan setelah VieilOurs
+
+  const [bonusMoveActive, setBonusMoveActive] = useState(false);
+
+  // === NEMESIS STATE ===
+  // nemesisMustMove: { nemesis, validPositions, pendingCards, owner, originalTurn }
+  // Ketika Nemesis harus bergerak, ini menyimpan state interrupt
+  const [nemesisMustMove, setNemesisMustMove] = useState(null);
+
+  // Fungsi untuk mengakhiri aksi
+  const finishCharacterAction = (charType) => {
+    setCharacterActions({ ...characterActions, [charType]: true });
+    setSelectedCharacter(null);
+    setValidMovePositions([]);
+    setBonusMoveActive(false); // Reset flag bonus
+    checkAutoAdvance();
+  };
 
   // === INITIALIZE DECK ===
   useEffect(() => {
@@ -187,8 +204,17 @@ const Arena = () => {
   const handleEndTurn = () => {
     if (gamePhase !== "battle") return;
 
+    const newTurn = turn === "player" ? "enemy" : "player";
+
+    // Cek apakah giliran baru punya Nemesis, jika ya otomatis mark as acted
+    const hasNemesis = placedCards.find(
+      (p) => p.cardData.type === "Nemesis" && p.owner === newTurn
+    );
+
+    const initialActions = hasNemesis ? { Nemesis: true } : {};
+
     setCurrentPhase("action");
-    setCharacterActions({});
+    setCharacterActions(initialActions);
     setActiveAbilityUsed({}); // Reset active ability usage for new action phase
     setAbilityMode(null); // Reset ability mode
     setAbilityData({}); // Reset ability data
@@ -201,7 +227,7 @@ const Arena = () => {
       selectedRecruitmentCard: null,
       selectingPosition: false,
     });
-    setTurn(turn === "player" ? "enemy" : "player");
+    setTurn(newTurn);
   };
 
   // === MANUAL END ACTION PHASE ===
@@ -383,9 +409,16 @@ const Arena = () => {
 
   // Cek apakah perlu skip recruitment
   const checkSkipRecruitment = () => {
-    const characterCount = placedCards.filter((p) => p.owner === turn).length;
+    // Hitung karakter recruited (exclude King dan Ourson)
+    const recruitedCount = placedCards.filter(
+      (p) => p.owner === turn && !p.isKing && !p.isOurson
+    ).length;
 
-    console.log("Character count:", characterCount);
+    // Max recruited selalu 4 (VieilOurs + Ourson dihitung 1)
+    const maxRecruited = 4;
+
+    console.log("Recruited count:", recruitedCount);
+    console.log("Max recruited:", maxRecruited);
     console.log(
       "Turn:",
       turn,
@@ -395,7 +428,7 @@ const Arena = () => {
       recruitmentCount
     );
 
-    if (characterCount >= 5) {
+    if (recruitedCount >= maxRecruited) {
       // Auto skip recruitment dan ganti turn
       setTimeout(() => {
         handleEndTurn();
@@ -415,8 +448,28 @@ const Arena = () => {
   };
 
   // === BATTLE PHASE HANDLERS ===
+  // Helper function untuk mendapatkan valid moves untuk Leader
+  const getLeaderMoves = (leader, placedCards) => {
+    // Leader hanya bisa bergerak 1 langkah (adjacent)
+    // Gerakan tambahan dihandle oleh bonusMoveActive system
+    const adjacentPositions = getAdjacentPositions(leader.positionId);
+    const emptyAdjacent = adjacentPositions.filter(
+      (posId) => !placedCards.find((card) => card.positionId === posId)
+    );
+
+    return emptyAdjacent;
+  };
+
   const handleBattlePositionClick = (position) => {
-    if (gamePhase !== "battle" || currentPhase !== "action") return;
+    if (gamePhase !== "battle") return;
+
+    // Handle Nemesis movement selection (bisa di action atau recruitment phase)
+    if (nemesisMustMove) {
+      handleNemesisMoveSelection(position);
+      return;
+    }
+
+    if (currentPhase !== "action") return;
 
     // Handle ability modes
     if (abilityMode && selectedCharacter) {
@@ -434,16 +487,32 @@ const Arena = () => {
       !selectedCharacter &&
       !characterActions[clickedCharacter.cardData.type]
     ) {
+      // NEMESIS: Tidak bisa bergerak di action phase normal
+      if (clickedCharacter.cardData.type === "Nemesis") {
+        alert(
+          "Nemesis tidak bisa melakukan aksi di action phase. Nemesis hanya bergerak otomatis ketika Leader lawan bergerak!"
+        );
+        return;
+      }
+
       setSelectedCharacter(clickedCharacter);
 
-      // Calculate and set valid move positions (adjacent empty positions)
-      const adjacentPositions = getAdjacentPositions(
-        clickedCharacter.positionId
-      );
-      const emptyAdjacentPositions = adjacentPositions.filter(
-        (posId) => !placedCards.find((card) => card.positionId === posId)
-      );
-      setValidMovePositions(emptyAdjacentPositions);
+      // Calculate and set valid move positions
+      // Jika King/Leader, gunakan getLeaderMoves yang support Vizir
+      // Jika karakter biasa, gunakan adjacent empty positions
+      let validMoves;
+      if (clickedCharacter.cardData.type === "king") {
+        validMoves = getLeaderMoves(clickedCharacter, placedCards);
+      } else {
+        const adjacentPositions = getAdjacentPositions(
+          clickedCharacter.positionId
+        );
+        validMoves = adjacentPositions.filter(
+          (posId) => !placedCards.find((card) => card.positionId === posId)
+        );
+      }
+
+      setValidMovePositions(validMoves);
 
       return;
     }
@@ -474,13 +543,31 @@ const Arena = () => {
       console.log("- Target position:", position.id);
       console.log("- Adjacent positions:", adjacentPositions);
       console.log("- Is adjacent:", adjacentPositions.includes(position.id));
+      console.log("- Valid move positions:", validMovePositions);
+      console.log("- Is valid move:", validMovePositions.includes(position.id));
 
-      if (adjacentPositions.includes(position.id)) {
-        // Special handling for Leader with Vizir
+      // Cek apakah target position ada di validMovePositions
+      if (validMovePositions.includes(position.id)) {
+        // Special handling for Leader/King
         if (selectedCharacter.cardData.type === "king") {
-          handleLeaderMove(selectedCharacter, position.id);
+          if (bonusMoveActive) {
+            // Jika ini adalah gerakan kedua (bonus), langsung eksekusi dan selesai
+            let finalCards = placedCards.map((card) =>
+              card.positionId === selectedCharacter.positionId
+                ? { ...card, positionId: position.id }
+                : card
+            );
+            // Cek Nemesis movement lagi untuk gerakan kedua
+            finalCards = checkNemesisMovement(turn, finalCards);
+            setPlacedCards(finalCards);
+            finishCharacterAction(selectedCharacter.cardData.type);
+            setTimeout(() => checkWinCondition(), 100);
+          } else {
+            // Jika ini gerakan pertama, jalankan logika pengecekan Vizir
+            handleLeaderMove(selectedCharacter, position.id);
+          }
         } else {
-          // Normal move
+          // Normal move untuk karakter lain
           const newPlacedCards = placedCards.map((card) =>
             card.positionId === selectedCharacter.positionId
               ? { ...card, positionId: position.id }
@@ -502,7 +589,7 @@ const Arena = () => {
           checkAutoAdvance(newPlacedCards, newActions);
         }
       } else {
-        alert("Hanya bisa pindah ke posisi yang adjacent!");
+        alert("Hanya bisa pindah ke posisi yang valid (ditandai ring biru)!");
       }
     }
 
@@ -514,70 +601,234 @@ const Arena = () => {
   };
 
   // Handle leader move with Vizir bonus
+  // const handleLeaderMove = (leader, targetPos) => {
+  //   // 1. Cek keberadaan Vizir (Gunakan helper yang sudah ada)
+  //   const hasVizir = SkillHandlers.checkVizirEffect(
+  //     leader.positionId,
+  //     placedCards,
+  //     turn
+  //   );
+
+  //   // 2. Hitung jarak menggunakan sistem Cube
+  //   const distance = SkillManager.getDistance(leader.positionId, targetPos);
+
+  //   // 3. LOGIKA VALIDASI GERAK
+  //   let isValidMove = false;
+
+  //   if (distance === 1) {
+  //     // Gerak normal (adjacent) selalu boleh jika target kosong
+  //     isValidMove = true;
+  //   } else if (hasVizir && distance === 2) {
+  //     // Efek Vizir: Boleh 2 langkah, TAPI harus lurus dan tidak terhalang
+  //     const isStraight = SkillManager.isStraightLine(
+  //       leader.positionId,
+  //       targetPos
+  //     );
+  //     const isVisible = SkillManager.isVisibleInStraightLine(
+  //       leader.positionId,
+  //       targetPos,
+  //       placedCards
+  //     );
+
+  //     if (isStraight && isVisible) {
+  //       isValidMove = true;
+  //     } else if (!isStraight) {
+  //       alert("Leader hanya bisa bergerak 2 space dalam GARIS LURUS!");
+  //       return;
+  //     } else if (!isVisible) {
+  //       alert("Gerakan terhalang oleh karakter lain!");
+  //       return;
+  //     }
+  //   } else {
+  //     alert("Leader hanya bisa bergerak 1 space (atau 2 space dengan Vizir)!");
+  //     return;
+  //   }
+
+  //   if (isValidMove) {
+  //     const newPlacedCards = placedCards.map((card) =>
+  //       card.positionId === leader.positionId
+  //         ? { ...card, positionId: targetPos }
+  //         : card
+  //     );
+
+  //     setPlacedCards(newPlacedCards);
+  //     const newActions = {
+  //       ...characterActions,
+  //       [leader.cardData.type]: true,
+  //     };
+
+  //     setCharacterActions(newActions);
+  //     setSelectedCharacter(null);
+  //     setValidMovePositions([]);
+
+  //     // Check for Nemesis movement
+  //     checkNemesisMovement(leader, targetPos);
+
+  //     setTimeout(() => checkWinCondition(), 100);
+  //     checkAutoAdvance(newPlacedCards, newActions);
+  //   }
+  // };
   const handleLeaderMove = (leader, targetPos) => {
-    const vizir = placedCards.find(
-      (p) => p.cardData.type === "Vizir" && p.owner === turn
-    );
+    // 1. Validasi awal: Gerakan pertama harus berjarak 1 (Adjacent)
+    const distance = SkillManager.getDistance(leader.positionId, targetPos);
 
-    const distance = SkillManager.getDistanceInStraightLine(
-      leader.positionId,
-      targetPos
-    );
-
-    if (vizir && distance === 2) {
-      // Check intermediate position for 2-space move
-      const dir = SkillManager.getDirection(leader.positionId, targetPos);
-      const intermediatePos = SkillManager.getNextPositionInDirection(
-        leader.positionId,
-        { deltaRow: dir.deltaRow / 2, deltaCol: dir.deltaCol / 2 },
-        SkillConstants.BOARD_CONFIG
-      );
-
-      if (
-        intermediatePos &&
-        placedCards.find((c) => c.positionId === intermediatePos)
-      ) {
-        alert("Tidak bisa bergerak 2 space - posisi tengah terhalang!");
-        return;
-      }
+    if (distance !== 1) {
+      alert("Leader hanya bisa bergerak 1 petak per langkah.");
+      return;
     }
 
-    const newPlacedCards = placedCards.map((card) =>
+    // 2. Eksekusi Gerakan Pertama
+    let updatedPlacedCards = placedCards.map((card) =>
       card.positionId === leader.positionId
         ? { ...card, positionId: targetPos }
         : card
     );
 
-    setPlacedCards(newPlacedCards);
+    // 3. Cek Nemesis movement (Nemesis lawan bergerak ketika Leader kita bergerak)
+    updatedPlacedCards = checkNemesisMovement(turn, updatedPlacedCards);
 
-    const newActions = {
-      ...characterActions,
-      [leader.cardData.type]: true,
-    };
+    setPlacedCards(updatedPlacedCards);
 
-    setCharacterActions(newActions);
-    setSelectedCharacter(null);
-    setValidMovePositions([]);
+    // 3. Cek Efek Vizir untuk Gerakan Tambahan
+    const hasVizir = SkillHandlers.checkVizirEffect(
+      targetPos,
+      updatedPlacedCards,
+      turn
+    );
 
-    // Check for Nemesis movement
-    checkNemesisMovement(leader, targetPos);
+    if (hasVizir) {
+      // Beri jeda sedikit agar render posisi pertama selesai terlihat oleh pemain
+      setTimeout(() => {
+        const mauLanjut = window.confirm(
+          "Vizir aktif! Apakah Leader ingin bergerak 1 petak lagi?"
+        );
 
-    setTimeout(() => checkWinCondition(), 100);
-    checkAutoAdvance(newPlacedCards, newActions);
+        if (mauLanjut) {
+          // TAHAP 2: Jika "Ya", jangan akhiri turn dulu.
+          // Update selectedCharacter ke posisi baru dan cari petak adjacent lagi.
+          const leaderBaru = { ...leader, positionId: targetPos };
+          setSelectedCharacter(leaderBaru);
+
+          // Cari petak kosong di sekitar posisi baru
+          const adjacentBaru = SkillManager.getAdjacentPositions(
+            targetPos
+          ).filter(
+            (pos) => !updatedPlacedCards.some((c) => c.positionId === pos)
+          );
+
+          setValidMovePositions(adjacentBaru);
+
+          // Kita set sebuah flag (state) agar gerakan selanjutnya dianggap sebagai gerakan terakhir
+          setBonusMoveActive(true);
+        } else {
+          // Jika "Tidak", akhiri aksi Leader
+          finishCharacterAction(leader.cardData.type);
+        }
+      }, 100);
+    } else {
+      // Jika tidak ada Vizir, langsung akhiri aksi
+      finishCharacterAction(leader.cardData.type);
+    }
   };
 
   // Check if Nemesis needs to move when opponent Leader moves
-  const checkNemesisMovement = (leader, newPos) => {
-    if (leader.owner === turn) return; // Only when opponent leader moves
+  const checkNemesisMovement = (leaderOwner, currentPlacedCards) => {
+    // Nemesis milik lawan yang akan bergerak
+    const nemesisOwner = leaderOwner === "player" ? "enemy" : "player";
 
-    const nemesis = placedCards.find(
-      (p) => p.cardData.type === "Nemesis" && p.owner === turn
+    const nemesis = currentPlacedCards.find(
+      (p) => p.cardData.type === "Nemesis" && p.owner === nemesisOwner
     );
 
-    if (nemesis) {
-      console.log("Nemesis should move 2 spaces!");
-      // TODO: Implement Nemesis auto-movement
+    if (!nemesis) return currentPlacedCards;
+
+    // Cari posisi Leader lawan (yang baru saja bergerak)
+    const opponentLeader = currentPlacedCards.find(
+      (p) => p.isKing && p.owner === leaderOwner
+    );
+
+    if (!opponentLeader) return currentPlacedCards;
+
+    console.log("🎯 NEMESIS INTERRUPT TRIGGER:");
+    console.log("- Current turn:", leaderOwner);
+    console.log("- Nemesis owner:", nemesisOwner);
+    console.log("- Nemesis position:", nemesis.positionId);
+
+    // Hitung valid positions untuk Nemesis (semua arah)
+    const nemesisMovement = SkillManager.calculateNemesisMovement(
+      nemesis.positionId,
+      opponentLeader.positionId,
+      currentPlacedCards,
+      SkillConstants.BOARD_CONFIG
+    );
+
+    console.log("- Valid positions:", nemesisMovement.validPositions);
+    console.log("- Can move:", nemesisMovement.canMove);
+
+    if (!nemesisMovement.canMove) {
+      console.log("Nemesis tidak bisa bergerak!");
+      setTimeout(() => {
+        alert("⚔️ Nemesis tidak bisa bergerak karena tidak ada posisi valid!");
+      }, 100);
+      return currentPlacedCards;
     }
+
+    // Pemain memilih posisi dari yang valid
+    // validPositions sudah berisi posisi 2 langkah (prioritas) atau 1 langkah jika 2 tidak ada
+    const selectablePositions = nemesisMovement.validPositions;
+
+    // Set state untuk INTERRUPT - pemilik Nemesis memilih posisi
+    // Turn tidak berubah, ini hanya interrupt sementara
+    setNemesisMustMove({
+      nemesis,
+      validPositions: selectablePositions,
+      pendingCards: currentPlacedCards,
+      owner: nemesisOwner,
+      originalTurn: leaderOwner, // Simpan turn asli untuk referensi
+    });
+    setValidMovePositions(selectablePositions);
+
+    setTimeout(() => {
+      const moveType =
+        nemesisMovement.twoSpacePositions.length > 0 ? "2 petak" : "1 petak";
+      const ownerName = nemesisOwner === "player" ? "PLAYER" : "ENEMY";
+      alert(
+        `⚔️ INTERRUPT! ${ownerName}'s Nemesis harus bergerak ${moveType}!\n\n` +
+          `Giliran ${ownerName} untuk memilih posisi Nemesis.`
+      );
+    }, 100);
+
+    return currentPlacedCards; // Return unchanged, akan diupdate setelah pemain memilih
+  };
+
+  // Handler ketika pemain memilih posisi untuk Nemesis
+  const handleNemesisMoveSelection = (position) => {
+    if (!nemesisMustMove) return;
+
+    const { nemesis, validPositions, pendingCards, owner } = nemesisMustMove;
+
+    if (!validPositions.includes(position.id)) {
+      alert("Posisi tidak valid! Pilih posisi yang di-highlight.");
+      return;
+    }
+
+    // Pindahkan Nemesis
+    const newPlacedCards = pendingCards.map((card) =>
+      card.positionId === nemesis.positionId
+        ? { ...card, positionId: position.id }
+        : card
+    );
+
+    console.log(
+      `✅ Nemesis (${owner}) bergerak ke ${position.id} (dipilih pemain)`
+    );
+
+    setPlacedCards(newPlacedCards);
+    setNemesisMustMove(null);
+    setValidMovePositions([]);
+
+    // Turn tetap di pemain yang sedang bermain (tidak berubah)
+    // Ini adalah interrupt, jadi setelah Nemesis bergerak, turn kembali normal
   };
 
   // Handle ability mode clicks
@@ -782,16 +1033,26 @@ const Arena = () => {
       return;
     }
 
-    const direction = SkillManager.getDirection(
-      selectedCharacter.positionId,
-      position.id
+    // Langsung tanya opsi setelah select target
+    const shouldMoveToTarget = window.confirm(
+      "Pilih aksi:\nOK - Pindah dekat target (Lance moves next to enemy)\nCancel - Tarik target jadi adjacent (Pull enemy close)"
     );
-    setAbilityMode("lance_select_option");
-    setValidMovePositions([position.id]);
-    setAbilityData({ target: position.id, direction });
+
+    // Execute langsung
+    const newPlacedCards = SkillHandlers.executeLanceGrappin(
+      selectedCharacter.positionId,
+      position.id,
+      shouldMoveToTarget,
+      placedCards,
+      config
+    );
+
+    setPlacedCards(newPlacedCards);
+    finishAbility(selectedCharacter.cardData.type);
   };
 
   const handleLanceSelectOption = (position, config) => {
+    // Fungsi ini tidak digunakan lagi karena sudah dihandle di handleLanceSelectTarget
     const shouldMoveToTarget = window.confirm(
       "Pilih aksi:\nOK - Pindah dekat target (Lance moves next to enemy)\nCancel - Tarik target jadi adjacent (Pull enemy close)"
     );
@@ -990,6 +1251,69 @@ const Arena = () => {
     }, 200);
   };
 
+  // Handler untuk menempatkan Ourson setelah VieilOurs
+  const handleOursonPlacement = (position) => {
+    if (!pendingOurson) return;
+
+    // Cek apakah posisi valid (recruitment space di zona sendiri)
+    const recruitmentSpaces =
+      SkillConstants.RECRUITMENT_SPACES[
+        pendingOurson.owner === "player" ? "player" : "enemy"
+      ];
+
+    if (!recruitmentSpaces.includes(position.id)) {
+      alert("Ourson hanya bisa ditempatkan di recruitment space zona sendiri!");
+      return;
+    }
+
+    // Cek apakah posisi kosong
+    const isOccupied = placedCards.find((p) => p.positionId === position.id);
+    if (isOccupied) {
+      alert("Posisi sudah terisi!");
+      return;
+    }
+
+    // Tempatkan Ourson
+    const oursonImage = `/Assets/Pions_personnages/${
+      pendingOurson.color === "white" ? "Blanc" : "Noir"
+    }/Leaders_BGA_${
+      pendingOurson.color === "white" ? "white" : "black"
+    }_Ourson.png`;
+
+    const newPlacedCards = [
+      ...placedCards,
+      {
+        positionId: position.id,
+        cardImage: oursonImage,
+        cardData: { type: "Ourson" }, // Ourson sebagai tipe khusus
+        owner: pendingOurson.owner,
+        isKing: false,
+        isOurson: true, // Flag khusus untuk identifikasi
+      },
+    ];
+
+    setPlacedCards(newPlacedCards);
+    setPendingOurson(null);
+
+    // Reset recruitment phase
+    setRecruitmentPhase({
+      selectingCard: true,
+      selectedRecruitmentCard: null,
+      selectingPosition: false,
+    });
+
+    // Cek apakah pemain kedua masih punya recruitment tambahan
+    if (turn !== firstTurn && recruitmentCount > 1) {
+      // Masih ada recruitment tambahan untuk pemain kedua
+      setRecruitmentCount((prev) => prev - 1);
+    } else {
+      // Auto lanjut ke end turn setelah recruitment selesai
+      setTimeout(() => {
+        handleEndTurn();
+      }, 500);
+    }
+  };
+
   // Handler untuk pilih posisi di recruitment phase
   const handleRecruitmentPositionSelect = (position) => {
     const { selectedRecruitmentCard } = recruitmentPhase;
@@ -1050,6 +1374,22 @@ const Arena = () => {
     setPlacedCards(newPlacedCards);
     setAvailableCards(finalAvailableCards);
     setDeck(finalDeck);
+
+    // CEK: Jika karakter yang direkrut adalah VieilOurs
+    if (selectedRecruitmentCard.type === "VieilOurs") {
+      // Set state untuk menempatkan Ourson
+      setPendingOurson({
+        owner: turn,
+        color: color,
+      });
+      // Tetap di mode pilih posisi tapi sekarang untuk Ourson
+      setRecruitmentPhase({
+        selectingCard: false,
+        selectedRecruitmentCard: null,
+        selectingPosition: true, // Tetap true untuk place Ourson
+      });
+      return; // Jangan lanjut ke end turn dulu
+    }
 
     // Cek apakah pemain kedua masih punya recruitment tambahan
     if (turn !== firstTurn && recruitmentCount > 1) {
@@ -1206,11 +1546,16 @@ const Arena = () => {
       }
 
       const deployedCount = placedCards.filter(
-        (p) => p.owner === turn && !p.isKing
+        (p) => p.owner === turn && !p.isKing && !p.isOurson // Ourson tidak dihitung
       ).length;
 
-      if (deployedCount >= 4) {
-        alert("Maksimal 5 character (termasuk king)!");
+      // Max selalu 4 karakter recruited (VieilOurs + Ourson dihitung 1)
+      const maxCharacters = 4;
+
+      if (deployedCount >= maxCharacters) {
+        alert(
+          `Maksimal ${maxCharacters} character recruited (tidak termasuk king)!`
+        );
         return;
       }
 
@@ -1276,8 +1621,13 @@ const Arena = () => {
         currentPhase === "recruitment" &&
         recruitmentPhase.selectingPosition
       ) {
-        // Battle phase - recruitment phase (pilih posisi)
-        handleRecruitmentPositionSelect(position);
+        // CEK: Jika sedang menempatkan Ourson
+        if (pendingOurson) {
+          handleOursonPlacement(position);
+        } else {
+          // Battle phase - recruitment phase (pilih posisi)
+          handleRecruitmentPositionSelect(position);
+        }
       }
     }
   };
@@ -1326,7 +1676,15 @@ const Arena = () => {
             `⚔️ Character Placement - ${
               turn === "player" ? "Player" : "Enemy"
             } Turn`}
+          {gamePhase === "battle" && nemesisMustMove && (
+            <span className="text-red-400">
+              ⚔️ NEMESIS INTERRUPT! -{" "}
+              {nemesisMustMove.owner === "player" ? "PLAYER" : "ENEMY"} pilih
+              posisi Nemesis
+            </span>
+          )}
           {gamePhase === "battle" &&
+            !nemesisMustMove &&
             `⚡ Battle Phase - ${
               (turn === "player" && playerColor === "white") ||
               (turn === "enemy" && enemyColor === "white")
@@ -1437,8 +1795,9 @@ const Arena = () => {
           <div className="mt-2">
             {recruitmentPhase.selectingPosition ? (
               <p className="text-green-400 text-sm">
-                Pilih posisi di recruitment space (lingkaran emas) untuk
-                menempatkan {recruitmentPhase.selectedRecruitmentCard?.type}
+                {pendingOurson
+                  ? "🐻 Tempatkan Ourson di recruitment space (lingkaran emas)"
+                  : `Pilih posisi di recruitment space (lingkaran emas) untuk menempatkan ${recruitmentPhase.selectedRecruitmentCard?.type}`}
               </p>
             ) : (
               <p className="text-blue-400 text-sm">
