@@ -253,8 +253,13 @@ const GameBoard = ({
                       <img
                         src={cardAtPosition.cardImage}
                         className={`w-full h-full object-cover rounded-full border-2 ${cardAtPosition.isKing
-                            ? "border-yellow-300"
-                            : "border-white"
+                          ? "border-yellow-300"
+                          : "border-white"
+                          }${
+                          // ✨ HIGHLIGHT untuk Illusionist targets
+                          isValidMovePosition
+                            ? "ring-4 ring-purple-400 animate-pulse"
+                            : ""
                           }`}
                         style={{
                           transform: `rotate(${getImageRotation()}deg)`,
@@ -262,6 +267,18 @@ const GameBoard = ({
                         }}
                         alt="Character"
                       />
+
+                      {/* ✨ TAMBAHAN: Overlay ring untuk target Illusionist */}
+                      {isValidMovePosition && (
+                        <div
+                          className="absolute inset-0 rounded-full border-4 border-purple-500 animate-ping"
+                          style={{
+                            transform: `rotate(${getImageRotation()}deg)`,
+                            transition: "transform 700ms ease-in-out",
+                            animation: "ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite",
+                          }}
+                        />
+                      )}
 
                       {/* Active Ability Icon */}
                       {!cardAtPosition.isKing &&
@@ -279,8 +296,8 @@ const GameBoard = ({
                               src="/activeAbility.png"
                               alt="Active Ability"
                               className={`w-11 h-11 ${activeAbilityUsed?.[cardAtPosition.cardData.type]
-                                  ? "opacity-40 grayscale"
-                                  : "opacity-100"
+                                ? "opacity-40 grayscale"
+                                : "opacity-100"
                                 }`}
                               title="Active Ability Available"
                             />

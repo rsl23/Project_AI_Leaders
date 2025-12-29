@@ -54,11 +54,38 @@ export const getDistance = (pos1, pos2) => {
 
 // Pengecekan GARIS LURUS (Solusi untuk Bug kamu)
 export const isStraightLine = (pos1, pos2) => {
-  if (!pos1 || !pos2) return false;
+  if (!pos1 || !pos2) {
+    console.log("❌ Invalid positions");
+    return false;
+  }
+
+  if (pos1 === pos2) {
+    console.log("❌ Same position");
+    return false;
+  }
+
   const a = toCube(pos1);
   const b = toCube(pos2);
-  // Garis lurus hexagon hanya terjadi jika salah satu sumbu Cube-nya sama
-  return a.x === b.x || a.y === b.y || a.z === b.z;
+
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dz = b.z - a.z;
+
+  // ✅ LOGIKA BENAR untuk Hexagonal Grid:
+  // Garis lurus terjadi jika TEPAT SATU dari koordinat cube bernilai 0
+  // (karena x + y + z = 0 selalu, maka 2 koordinat lain pasti sama besar dengan tanda berlawanan)
+
+  const countZero = [dx, dy, dz].filter(d => d === 0).length;
+  const isStraight = countZero === 1;
+
+  console.log(`📐 Straight line check ${pos1} -> ${pos2}:`, {
+    dx, dy, dz,
+    countZero,
+    isStraight,
+    condition: isStraight ? "✅ STRAIGHT" : "❌ NOT STRAIGHT"
+  });
+
+  return isStraight;
 };
 
 // ============================================
@@ -82,6 +109,7 @@ export const isVisibleInStraightLine = (fromPos, toPos, placedCards) => {
 
     const midId = fromCube(x, y, z);
     if (midId && placedCards.some((card) => card.positionId === midId)) {
+      console.log(`🚫 Obstacle at ${midId} between ${fromPos} and ${toPos}`);
       return false; // Ada rintangan
     }
   }
@@ -763,6 +791,26 @@ export const getIllusionistTargets = (
 
   placedCards.forEach((card) => {
     const targetPos = card.positionId;
+
+    if (targetPos === characterPos) {
+      console.log(`❌ ${targetPos} is self - skipped`);
+      return;
+    }
+
+    if (isAdjacent(characterPos, targetPos)) {
+      console.log(`❌ ${targetPos} adjacent to ${characterPos} - skipped`);
+      return;
+    }
+
+    if (!isStraightLine(characterPos, targetPos)) {
+      console.log(`❌ ${targetPos} not straight line from ${characterPos}`);
+      return;
+    }
+
+    if (!isVisibleInStraightLine(characterPos, targetPos, placedCards)) {
+      console.log(`❌ ${targetPos} not visible from ${characterPos} - obstacle detected`);
+      return;
+    }
 
     // Syarat Illusionist:
     // 1. Bukan dirinya sendiri

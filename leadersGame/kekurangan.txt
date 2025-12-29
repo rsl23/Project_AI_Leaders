@@ -7,7 +7,7 @@ active
 6. Tavernier/brewmaster done
 7. manipulator done
 8. lance grappin done
-9. illusionist done (pengecekan adjacent, dan garis lurus masih tidak sempurna)
+9. illusionist done (cek lagi aja, haruse bener)
 
 passive
 1. assasin done

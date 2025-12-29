@@ -1223,6 +1223,10 @@ const Arena = () => {
   };
 
   const handleIllusionistSelectTarget = (position) => {
+    if (!validMovePositions.includes(position.id)) {
+      alert("❌ Pilih karakter yang valid (dengan highlight PURPLE)!");
+      return;
+    }
     const target = placedCards.find((c) => c.positionId === position.id);
     if (!target) {
       alert("Pilih karakter target!");
