@@ -3,7 +3,6 @@ import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import "./App.css";
 import Arena from "./components/Arena";
-import ArenaVsAI from "./components/ArenaVsAi";
 import {
   createBrowserRouter,
   createRoutesFromElements,
@@ -16,8 +15,8 @@ const router = createBrowserRouter(
   createRoutesFromElements(
     <Route path="/">
       <Route index element={<Menu />}></Route>
-      <Route path="arena" element={<Arena />}></Route>
-      <Route path="arenavsai" element={<ArenaVsAI />}></Route>
+      <Route path="arena" element={<Arena mode="pvp" />}></Route>
+      <Route path="arenavsai" element={<Arena mode="ai" />}></Route>
     </Route>
   )
 );

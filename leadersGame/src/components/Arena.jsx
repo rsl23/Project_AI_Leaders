@@ -11,7 +11,11 @@ import * as SkillManager from "../skill/skillManager";
 import * as SkillHandlers from "../skill/skillHandlers";
 import * as SkillConstants from "../skill/skillConstants";
 
-const Arena = () => {
+// Import AI module
+import * as AIPlayer from "../ai/aiPlayer";
+
+const Arena = ({ mode = "pvp" }) => {
+  // mode: "pvp" atau "ai"
   const audioRef = useRef(null);
   const navigate = useNavigate();
 
@@ -58,6 +62,10 @@ const Arena = () => {
   // nemesisMustMove: { nemesis, validPositions, pendingCards, owner, originalTurn }
   // Ketika Nemesis harus bergerak, ini menyimpan state interrupt
   const [nemesisMustMove, setNemesisMustMove] = useState(null);
+
+  // === AI STATE ===
+  const aiThinking = useRef(false);
+  const [aiBusy, setAiBusy] = useState(false);
 
   // Fungsi untuk mengakhiri aksi
   const finishCharacterAction = (charType) => {
@@ -180,6 +188,83 @@ const Arena = () => {
       setAbilityMode("nemesis_move");
     }
   }, [nemesisMustMove]);
+
+  // ===========================================
+  // AI TURN SYSTEM (only active when mode="ai")
+  // Uses AIPlayer module from aiPlayer.js
+  // ===========================================
+
+  const handleEndTurnForAI = () => {
+    // Reset state for player turn
+    setCurrentPhase("action");
+    setCharacterActions({});
+    setActiveAbilityUsed({});
+    setAbilityMode(null);
+    setAbilityData({});
+    setSelectedCharacter(null);
+    setSelectedCard(null);
+    setRecruitmentCount(1);
+    setRecruitmentPhase({
+      selectingCard: true,
+      selectedRecruitmentCard: null,
+      selectingPosition: false,
+    });
+    setTurn("player");
+    aiThinking.current = false;
+    setAiBusy(false);
+  };
+
+  const runAITurn = () => {
+    AIPlayer.runAITurn({
+      // State
+      currentPhase,
+      placedCards,
+      characterActions,
+      availableCards,
+      deck,
+      enemyColor,
+      turn,
+      firstTurn,
+      recruitmentCount,
+      // Setters
+      setPlacedCards,
+      setCharacterActions,
+      setSelectedCharacter,
+      setValidMovePositions,
+      setCurrentPhase,
+      setAvailableCards,
+      setDeck,
+      setRecruitmentCount,
+      setRecruitmentPhase,
+      // Refs
+      aiThinking,
+      setAiBusy,
+      // Callbacks
+      checkSkipRecruitment,
+      handleEndTurnForAI,
+    });
+  };
+
+  // AI Turn Trigger
+  useEffect(() => {
+    if (mode !== "ai") return;
+    if (gamePhase !== "battle" || turn !== "enemy" || aiThinking.current)
+      return;
+    if (gameOver) return;
+
+    aiThinking.current = true;
+    setAiBusy(true);
+    setTimeout(() => runAITurn(), 700);
+  }, [
+    mode,
+    gamePhase,
+    turn,
+    currentPhase,
+    placedCards,
+    availableCards,
+    characterActions,
+    gameOver,
+  ]);
 
   useEffect(() => {
     if (audioRef.current) {
