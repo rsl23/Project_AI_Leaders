@@ -75,14 +75,16 @@ export const isStraightLine = (pos1, pos2) => {
   // Garis lurus terjadi jika TEPAT SATU dari koordinat cube bernilai 0
   // (karena x + y + z = 0 selalu, maka 2 koordinat lain pasti sama besar dengan tanda berlawanan)
 
-  const countZero = [dx, dy, dz].filter(d => d === 0).length;
+  const countZero = [dx, dy, dz].filter((d) => d === 0).length;
   const isStraight = countZero === 1;
 
   console.log(`📐 Straight line check ${pos1} -> ${pos2}:`, {
-    dx, dy, dz,
+    dx,
+    dy,
+    dz,
     countZero,
     isStraight,
-    condition: isStraight ? "✅ STRAIGHT" : "❌ NOT STRAIGHT"
+    condition: isStraight ? "✅ STRAIGHT" : "❌ NOT STRAIGHT",
   });
 
   return isStraight;
@@ -603,25 +605,45 @@ export const getCavalierValidMoves = (
   boardConfig = BOARD_CONFIG
 ) => {
   const validMoves = [];
-  // Get all 6 adjacent positions (hexagonal directions)
-  const adjacentPositions = getAdjacentPositions(characterPos, boardConfig);
+  const startCube = toCube(characterPos);
 
-  // For each hexagonal direction, try to move 2 spaces in straight line
-  adjacentPositions.forEach((adjPos) => {
-    const direction = getDirection(characterPos, adjPos);
+  // 6 Arah dasar hexagon dalam koordinat Cube
+  const directions = [
+    { x: 1, y: -1, z: 0 },
+    { x: 1, y: 0, z: -1 },
+    { x: 0, y: 1, z: -1 },
+    { x: -1, y: 1, z: 0 },
+    { x: -1, y: 0, z: 1 },
+    { x: 0, y: -1, z: 1 },
+  ];
 
-    // Get position 1 space away
-    const pos1 = adjPos;
-    // Get position 2 spaces away (in same direction)
-    const pos2 = getNextPositionInDirection(pos1, direction, boardConfig);
+  directions.forEach((dir) => {
+    // 1. Tentukan posisi 1 langkah (untuk mengecek apakah jalan terhalang)
+    const pos1Cube = {
+      x: startCube.x + dir.x,
+      y: startCube.y + dir.y,
+      z: startCube.z + dir.z,
+    };
+    const pos1Id = fromCube(pos1Cube.x, pos1Cube.y, pos1Cube.z);
 
-    if (pos2) {
-      const isPos1Empty = !placedCards.find((c) => c.positionId === pos1);
-      const isPos2Empty = !placedCards.find((c) => c.positionId === pos2);
-      // Both positions must be empty
-      //kalau mau bisa loncatin karakter, ganti jadi: if (isPos2Empty) {
-      if (isPos1Empty && isPos2Empty) {
-        validMoves.push(pos2);
+    // 2. Tentukan posisi 2 langkah (Target)
+    const pos2Cube = {
+      x: startCube.x + dir.x * 2,
+      y: startCube.y + dir.y * 2,
+      z: startCube.z + dir.z * 2,
+    };
+    const pos2Id = fromCube(pos2Cube.x, pos2Cube.y, pos2Cube.z);
+
+    // Validasi pergerakan:
+    if (pos2Id) {
+      // Jika target ada di dalam board
+      const isPos1Occupied = placedCards.some((c) => c.positionId === pos1Id);
+      const isPos2Occupied = placedCards.some((c) => c.positionId === pos2Id);
+
+      // Sesuai aturan: Jalan harus lurus, target harus kosong, dan petak tengah harus kosong
+      // Jika ingin bisa "melompati" karakter, hapus pengecekan !isPos1Occupied
+      if (!isPos1Occupied && !isPos2Occupied) {
+        validMoves.push(pos2Id);
       }
     }
   });
@@ -808,7 +830,9 @@ export const getIllusionistTargets = (
     }
 
     if (!isVisibleInStraightLine(characterPos, targetPos, placedCards)) {
-      console.log(`❌ ${targetPos} not visible from ${characterPos} - obstacle detected`);
+      console.log(
+        `❌ ${targetPos} not visible from ${characterPos} - obstacle detected`
+      );
       return;
     }
 
@@ -977,7 +1001,9 @@ const getAllTwoStepMovesCloserToTarget = (
 
   for (const firstStep of firstStepPositions) {
     // Cek apakah langkah pertama kosong atau tidak
-    const firstStepOccupied = placedCards.find(c => c.positionId === firstStep);
+    const firstStepOccupied = placedCards.find(
+      (c) => c.positionId === firstStep
+    );
 
     // Dari firstStep, cari semua posisi adjacent (langkah kedua)
     const secondStepPositions = getAdjacentPositions(firstStep, boardConfig);
@@ -987,7 +1013,9 @@ const getAllTwoStepMovesCloserToTarget = (
       if (secondStep === startPos) continue;
 
       // Cek apakah langkah kedua kosong
-      const secondStepOccupied = placedCards.find(c => c.positionId === secondStep);
+      const secondStepOccupied = placedCards.find(
+        (c) => c.positionId === secondStep
+      );
       if (secondStepOccupied) continue;
 
       // Hitung jarak baru ke target
@@ -1018,7 +1046,7 @@ const getOneStepMovesCloserToTarget = (
 
   for (const pos of adjacentPositions) {
     // Cek apakah posisi kosong
-    const isOccupied = placedCards.find(c => c.positionId === pos);
+    const isOccupied = placedCards.find((c) => c.positionId === pos);
     if (isOccupied) continue;
 
     // Hitung jarak baru ke target
@@ -1046,23 +1074,23 @@ export const getHermitCubRecruitmentPositions = (
   const recruitmentSpaces =
     turn === "player"
       ? [
-        "hex-1-4",
-        "hex-2-5",
-        "hex-3-6",
-        "hex-4-7",
-        "hex-5-6",
-        "hex-6-5",
-        "hex-7-4",
-      ]
+          "hex-1-4",
+          "hex-2-5",
+          "hex-3-6",
+          "hex-4-7",
+          "hex-5-6",
+          "hex-6-5",
+          "hex-7-4",
+        ]
       : [
-        "hex-1-1",
-        "hex-2-1",
-        "hex-3-1",
-        "hex-4-1",
-        "hex-5-1",
-        "hex-6-1",
-        "hex-7-1",
-      ];
+          "hex-1-1",
+          "hex-2-1",
+          "hex-3-1",
+          "hex-4-1",
+          "hex-5-1",
+          "hex-6-1",
+          "hex-7-1",
+        ];
 
   return recruitmentSpaces.filter(
     (pos) => !placedCards.find((c) => c.positionId === pos)
