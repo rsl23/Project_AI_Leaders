@@ -60,7 +60,7 @@ const Menu = () => {
         <Link to="/arena" className="w-80 kingdom-btn text-center">
           Play 2 Player (Multiplayer)
         </Link>
-        <Link to="/arena" className="w-80 kingdom-btn text-center">
+        <Link to="/arenavsai" className="w-80 kingdom-btn text-center">
           Play vs AI
         </Link>
       </div>

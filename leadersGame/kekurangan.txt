@@ -19,3 +19,8 @@ passive
 special
 1. Cub and oldman done
 2. nemesis done
+
+================================================== AI ==================================================
+- AI masih jalan yang basic aja kek movement sama recruit 
+- Masih belum pake ability
+- Decision makingnya belum 100%
