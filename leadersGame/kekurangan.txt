@@ -21,6 +21,7 @@ special
 2. nemesis done
 
 ================================================== AI ==================================================
-- AI masih jalan yang basic aja kek movement sama recruit 
-- Masih belum pake ability
+- udah pakai Alpha Beta Pruning jadi lebih pinter depth 2
+- AI masih jalan yang basic aja kek movement sama recruit (done harusnya) 
+- Masih belum pake ability (beberapa sudah tapi belum semua)
 - Decision makingnya belum 100%
