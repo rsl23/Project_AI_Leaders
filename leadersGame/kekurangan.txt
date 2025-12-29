@@ -18,4 +18,4 @@ passive
 
 special
 1. Cub and oldman done
-2. nemesis done (gk ada biru nandain arah gerak)
+2. nemesis done

@@ -160,6 +160,23 @@ const Arena = () => {
     setCurrentPhase("action");
   }, []);
 
+  // Tambahkan di Arena.js, setelah state declarations
+  useEffect(() => {
+    console.log("🔵 STATE UPDATE:");
+    console.log("- validMovePositions:", validMovePositions);
+    console.log("- abilityMode:", abilityMode);
+    console.log("- nemesisMustMove:", nemesisMustMove);
+    console.log("- Array length:", validMovePositions?.length);
+  }, [validMovePositions, abilityMode, nemesisMustMove]);
+
+  useEffect(() => {
+    if (nemesisMustMove) {
+      console.log("🔄 Setting highlights from nemesisMustMove...");
+      setValidMovePositions(nemesisMustMove.validPositions);
+      setAbilityMode("nemesis_move");
+    }
+  }, [nemesisMustMove]);
+
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = 0.5;
@@ -777,6 +794,12 @@ const Arena = () => {
     // validPositions sudah berisi posisi 2 langkah (prioritas) atau 1 langkah jika 2 tidak ada
     const selectablePositions = nemesisMovement.validPositions;
 
+    console.log("📤 Setting Nemesis highlights:");
+    console.log("- Positions to highlight:", nemesisMovement.validPositions);
+    console.log("- Array:", nemesisMovement.validPositions);
+    console.log("- First position:", nemesisMovement.validPositions[0]);
+    console.log("- Is array valid?", Array.isArray(nemesisMovement.validPositions));
+
     // Set state untuk INTERRUPT - pemilik Nemesis memilih posisi
     // Turn tidak berubah, ini hanya interrupt sementara
     setNemesisMustMove({
@@ -794,7 +817,7 @@ const Arena = () => {
       const ownerName = nemesisOwner === "player" ? "PLAYER" : "ENEMY";
       alert(
         `⚔️ INTERRUPT! ${ownerName}'s Nemesis harus bergerak ${moveType}!\n\n` +
-          `Giliran ${ownerName} untuk memilih posisi Nemesis.`
+        `Giliran ${ownerName} untuk memilih posisi Nemesis.`
       );
     }, 100);
 
@@ -826,9 +849,18 @@ const Arena = () => {
     setPlacedCards(newPlacedCards);
     setNemesisMustMove(null);
     setValidMovePositions([]);
+    setAbilityMode(null);
 
-    // Turn tetap di pemain yang sedang bermain (tidak berubah)
-    // Ini adalah interrupt, jadi setelah Nemesis bergerak, turn kembali normal
+    setTimeout(() => {
+      if (bonusMoveActive && selectedCharacter?.cardData.type === "king") {
+        console.log("⏩ Continuing Vizir bonus move...");
+      } else {
+        if (selectedCharacter?.cardData.type === "king") {
+          finishCharacterAction("king");
+        }
+      }
+      checkWinCondition();
+    }, 100);
   };
 
   // Handle ability mode clicks
@@ -1258,7 +1290,7 @@ const Arena = () => {
     // Cek apakah posisi valid (recruitment space di zona sendiri)
     const recruitmentSpaces =
       SkillConstants.RECRUITMENT_SPACES[
-        pendingOurson.owner === "player" ? "player" : "enemy"
+      pendingOurson.owner === "player" ? "player" : "enemy"
       ];
 
     if (!recruitmentSpaces.includes(position.id)) {
@@ -1274,11 +1306,9 @@ const Arena = () => {
     }
 
     // Tempatkan Ourson
-    const oursonImage = `/Assets/Pions_personnages/${
-      pendingOurson.color === "white" ? "Blanc" : "Noir"
-    }/Leaders_BGA_${
-      pendingOurson.color === "white" ? "white" : "black"
-    }_Ourson.png`;
+    const oursonImage = `/Assets/Pions_personnages/${pendingOurson.color === "white" ? "Blanc" : "Noir"
+      }/Leaders_BGA_${pendingOurson.color === "white" ? "white" : "black"
+      }_Ourson.png`;
 
     const newPlacedCards = [
       ...placedCards,
@@ -1338,11 +1368,9 @@ const Arena = () => {
 
     // Tempatkan karakter
     const color = turn === "player" ? playerColor : enemyColor;
-    const characterImage = `/Assets/Pions_personnages/${
-      color === "white" ? "Blanc" : "Noir"
-    }/Leaders_BGA_${color === "white" ? "white" : "black"}_${
-      selectedRecruitmentCard.type
-    }.png`;
+    const characterImage = `/Assets/Pions_personnages/${color === "white" ? "Blanc" : "Noir"
+      }/Leaders_BGA_${color === "white" ? "white" : "black"}_${selectedRecruitmentCard.type
+      }.png`;
 
     const newPlacedCards = [
       ...placedCards,
@@ -1561,9 +1589,8 @@ const Arena = () => {
 
       const color = turn === "player" ? playerColor : enemyColor;
       const colorPrefix = color === "white" ? "white" : "black";
-      const characterImage = `/Assets/Pions_personnages/${
-        color === "white" ? "Blanc" : "Noir"
-      }/Leaders_BGA_${colorPrefix}_${selectedCard.type}.png`;
+      const characterImage = `/Assets/Pions_personnages/${color === "white" ? "Blanc" : "Noir"
+        }/Leaders_BGA_${colorPrefix}_${selectedCard.type}.png`;
 
       const newPlacedCards = [
         ...placedCards,
@@ -1673,8 +1700,7 @@ const Arena = () => {
       <div className="absolute top-4 translate-x-150 z-20 bg-black/80 px-6 py-3 rounded-lg border-2 border-yellow-400">
         <p className="text-yellow-300 text-lg font-bold">
           {gamePhase === "placement" &&
-            `⚔️ Character Placement - ${
-              turn === "player" ? "Player" : "Enemy"
+            `⚔️ Character Placement - ${turn === "player" ? "Player" : "Enemy"
             } Turn`}
           {gamePhase === "battle" && nemesisMustMove && (
             <span className="text-red-400">
@@ -1685,13 +1711,11 @@ const Arena = () => {
           )}
           {gamePhase === "battle" &&
             !nemesisMustMove &&
-            `⚡ Battle Phase - ${
-              (turn === "player" && playerColor === "white") ||
+            `⚡ Battle Phase - ${(turn === "player" && playerColor === "white") ||
               (turn === "enemy" && enemyColor === "white")
-                ? "⚪ White's"
-                : "⚫ Black's"
-            } Turn - ${
-              currentPhase === "action" ? "Action Phase" : "Recruitment Phase"
+              ? "⚪ White's"
+              : "⚫ Black's"
+            } Turn - ${currentPhase === "action" ? "Action Phase" : "Recruitment Phase"
             }`}
         </p>
         {firstTurn && (
@@ -1763,15 +1787,14 @@ const Arena = () => {
             {selectedCharacter &&
               !abilityMode &&
               characterInfo[selectedCharacter.cardData.type]?.category ===
-                "Active" && (
+              "Active" && (
                 <button
                   onClick={handleUseActiveAbility}
                   disabled={activeAbilityUsed[selectedCharacter.cardData.type]}
-                  className={`mt-2 w-full px-4 py-2 font-bold rounded-lg border-2 shadow-lg transition-all duration-300 ${
-                    activeAbilityUsed[selectedCharacter.cardData.type]
-                      ? "bg-gray-600 border-gray-500 text-gray-400 cursor-not-allowed"
-                      : "bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white border-purple-400 hover:scale-105"
-                  }`}
+                  className={`mt-2 w-full px-4 py-2 font-bold rounded-lg border-2 shadow-lg transition-all duration-300 ${activeAbilityUsed[selectedCharacter.cardData.type]
+                    ? "bg-gray-600 border-gray-500 text-gray-400 cursor-not-allowed"
+                    : "bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white border-purple-400 hover:scale-105"
+                    }`}
                 >
                   {activeAbilityUsed[selectedCharacter.cardData.type]
                     ? "✓ Ability Used"

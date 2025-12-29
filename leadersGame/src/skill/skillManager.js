@@ -859,69 +859,130 @@ export const calculateNemesisMovement = (
   placedCards,
   boardConfig = BOARD_CONFIG
 ) => {
-  if (!nemesisPos)
+  if (!nemesisPos || !opponentLeaderPos) {
     return {
       validPositions: [],
       twoSpacePositions: [],
       oneSpacePositions: [],
       canMove: false,
     };
+  }
 
-  // Dapatkan semua posisi adjacent dari Nemesis (langkah 1)
-  const adjacentPositions = getAdjacentPositions(nemesisPos, boardConfig);
+  console.log("🧮 NEMESIS MOVEMENT CALCULATION:");
+  console.log("- Start pos (Nemesis):", nemesisPos);
+  console.log("- Target pos (Leader):", opponentLeaderPos);
 
-  const twoSpacePositions = new Set(); // Posisi 2 langkah yang valid
-  const oneSpacePositions = new Set(); // Posisi 1 langkah yang valid
+  // Hitung jarak awal antara Nemesis dan Leader
+  const originalDistance = getDistance(nemesisPos, opponentLeaderPos);
+  console.log("- Original distance:", originalDistance);
 
-  // Untuk setiap posisi adjacent (langkah 1)
-  for (const firstStep of adjacentPositions) {
-    // Cek apakah langkah 1 kosong (bisa dilewati)
-    const firstStepOccupied = placedCards.find(
-      (c) => c.positionId === firstStep
-    );
+  // 1. Cari semua kemungkinan gerakan 2 langkah yang LEBIH DEKAT ke Leader
+  const twoStepMoves = getAllTwoStepMovesCloserToTarget(
+    nemesisPos,
+    opponentLeaderPos,
+    placedCards,
+    boardConfig
+  );
 
-    if (!firstStepOccupied) {
-      // Langkah 1 kosong, bisa dijadikan posisi 1 langkah
-      oneSpacePositions.add(firstStep);
+  console.log("- Valid 2-step moves (closer):", twoStepMoves);
 
-      // Dari posisi langkah 1, cari semua posisi langkah 2
-      const secondStepPositions = getAdjacentPositions(firstStep, boardConfig);
+  // 2. Jika ada gerakan 2 langkah yang valid
+  if (twoStepMoves.length > 0) {
+    return {
+      validPositions: twoStepMoves,
+      twoSpacePositions: twoStepMoves,
+      oneSpacePositions: [],
+      canMove: true,
+    };
+  }
 
-      for (const secondStep of secondStepPositions) {
-        // Langkah 2 tidak boleh kembali ke posisi awal Nemesis
-        if (secondStep === nemesisPos) continue;
+  // 3. Jika tidak ada, cari gerakan 1 langkah yang LEBIH DEKAT ke Leader
+  const oneStepMoves = getOneStepMovesCloserToTarget(
+    nemesisPos,
+    opponentLeaderPos,
+    placedCards,
+    boardConfig
+  );
 
-        // Cek apakah langkah 2 kosong
-        const secondStepOccupied = placedCards.find(
-          (c) => c.positionId === secondStep
-        );
+  console.log("- Valid 1-step moves (closer):", oneStepMoves);
 
-        if (!secondStepOccupied) {
-          twoSpacePositions.add(secondStep);
-        }
+  return {
+    validPositions: oneStepMoves,
+    twoSpacePositions: [],
+    oneSpacePositions: oneStepMoves,
+    canMove: oneStepMoves.length > 0,
+  };
+};
+
+// Fungsi helper: Cari semua gerakan 2 langkah yang lebih dekat ke target
+const getAllTwoStepMovesCloserToTarget = (
+  startPos,
+  targetPos,
+  placedCards,
+  boardConfig
+) => {
+  const validMoves = [];
+  const originalDistance = getDistance(startPos, targetPos);
+
+  // Dapatkan semua posisi adjacent (langkah pertama)
+  const firstStepPositions = getAdjacentPositions(startPos, boardConfig);
+
+  for (const firstStep of firstStepPositions) {
+    // Cek apakah langkah pertama kosong atau tidak
+    const firstStepOccupied = placedCards.find(c => c.positionId === firstStep);
+
+    // Dari firstStep, cari semua posisi adjacent (langkah kedua)
+    const secondStepPositions = getAdjacentPositions(firstStep, boardConfig);
+
+    for (const secondStep of secondStepPositions) {
+      // Tidak boleh kembali ke posisi awal
+      if (secondStep === startPos) continue;
+
+      // Cek apakah langkah kedua kosong
+      const secondStepOccupied = placedCards.find(c => c.positionId === secondStep);
+      if (secondStepOccupied) continue;
+
+      // Hitung jarak baru ke target
+      const newDistance = getDistance(secondStep, targetPos);
+
+      // HARUS lebih dekat ke target (jarak berkurang)
+      if (newDistance < originalDistance) {
+        validMoves.push(secondStep);
       }
     }
   }
 
-  // Convert Set ke Array
-  const twoSpaceArray = Array.from(twoSpacePositions);
-  const oneSpaceArray = Array.from(oneSpacePositions);
+  return [...new Set(validMoves)]; // Hapus duplikat
+};
 
-  console.log("🔍 Nemesis Movement Calculation:");
-  console.log("- Nemesis pos:", nemesisPos);
-  console.log("- Two-space positions:", twoSpaceArray);
-  console.log("- One-space positions:", oneSpaceArray);
+// Fungsi helper: Cari semua gerakan 1 langkah yang lebih dekat ke target
+const getOneStepMovesCloserToTarget = (
+  startPos,
+  targetPos,
+  placedCards,
+  boardConfig
+) => {
+  const validMoves = [];
+  const originalDistance = getDistance(startPos, targetPos);
 
-  // Prioritas: 2 langkah dulu, jika tidak ada baru 1 langkah
-  const validPositions =
-    twoSpaceArray.length > 0 ? twoSpaceArray : oneSpaceArray;
+  // Dapatkan semua posisi adjacent
+  const adjacentPositions = getAdjacentPositions(startPos, boardConfig);
 
-  return {
-    validPositions,
-    twoSpacePositions: twoSpaceArray,
-    oneSpacePositions: oneSpaceArray,
-    canMove: validPositions.length > 0,
-  };
+  for (const pos of adjacentPositions) {
+    // Cek apakah posisi kosong
+    const isOccupied = placedCards.find(c => c.positionId === pos);
+    if (isOccupied) continue;
+
+    // Hitung jarak baru ke target
+    const newDistance = getDistance(pos, targetPos);
+
+    // HARUS lebih dekat ke target (jarak berkurang)
+    if (newDistance < originalDistance) {
+      validMoves.push(pos);
+    }
+  }
+
+  return validMoves;
 };
 
 // ============================================
@@ -937,23 +998,23 @@ export const getHermitCubRecruitmentPositions = (
   const recruitmentSpaces =
     turn === "player"
       ? [
-          "hex-1-4",
-          "hex-2-5",
-          "hex-3-6",
-          "hex-4-7",
-          "hex-5-6",
-          "hex-6-5",
-          "hex-7-4",
-        ]
+        "hex-1-4",
+        "hex-2-5",
+        "hex-3-6",
+        "hex-4-7",
+        "hex-5-6",
+        "hex-6-5",
+        "hex-7-4",
+      ]
       : [
-          "hex-1-1",
-          "hex-2-1",
-          "hex-3-1",
-          "hex-4-1",
-          "hex-5-1",
-          "hex-6-1",
-          "hex-7-1",
-        ];
+        "hex-1-1",
+        "hex-2-1",
+        "hex-3-1",
+        "hex-4-1",
+        "hex-5-1",
+        "hex-6-1",
+        "hex-7-1",
+      ];
 
   return recruitmentSpaces.filter(
     (pos) => !placedCards.find((c) => c.positionId === pos)
