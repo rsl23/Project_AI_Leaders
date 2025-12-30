@@ -55,39 +55,120 @@ const getPathDistance = (start, target, placedCards) => {
 // ============================================
 // Evaluation constants
 // Algoritma Minimax dengan Alpha-Beta Pruning
-const SCORE_KING_CAPTURE = 10000;
-const SCORE_PIECE_VALUE = 100;
-const SCORE_ADJACENT_TO_KING = 50;
+
+// Bobot Nilai Karakter (Material Value)
+const VALUE_KING = 1000000;
+const VALUE_ASSASSIN = 1200;
+const VALUE_ARCHER = 1100;
+const VALUE_PROTECTOR = 900;
+const VALUE_JAILER = 800;
+const VALUE_STANDARD = 500;
+
+// Bobot Kondisi Papan
+const BONUS_CAPTURE_THREAT = 5000; // Jika dalam posisi siap menang
+const PENALTY_KING_DANGER = -4000; // Jika King terancam
 
 const evaluateState = (cards, aiOwner) => {
-  let score = 0;
   const playerOwner = aiOwner === "enemy" ? "player" : "enemy";
+  let score = 0;
 
-  // 1. Cek Kondisi Menang/Kalah
-  const playerKing = cards.find((p) => p.owner === playerOwner && p.isKing);
   const enemyKing = cards.find((p) => p.owner === aiOwner && p.isKing);
+  const playerKing = cards.find((p) => p.owner === playerOwner && p.isKing);
 
-  if (!playerKing) return Infinity; // AI Menang
-  if (!enemyKing) return -Infinity; // AI Kalah
+  // 1. Cek Game Over Langsung
+  if (!playerKing) return 2000000; // AI Menang Mutlak
+  if (!enemyKing) return -2000000; // AI Kalah Mutlak
 
-  // 2. Material & Posisi
   cards.forEach((card) => {
     const isAI = card.owner === aiOwner;
-    let value = SCORE_PIECE_VALUE;
+    const multiplier = isAI ? 1 : -1;
+    let cardValue = VALUE_STANDARD;
 
-    if (card.isKing) value = 500;
-    if (card.cardData.type === "Protector") value = 150; // Protector sangat berharga
+    // A. Material Score berdasarkan tipe di PDF
+    const type = card.cardData?.type;
+    if (type === "Assassin") cardValue = VALUE_ASSASSIN;
+    else if (type === "Archer") cardValue = VALUE_ARCHER;
+    else if (type === "Protector") cardValue = VALUE_PROTECTOR;
+    else if (type === "Geolier") cardValue = VALUE_JAILER;
+    else if (card.isKing) cardValue = 10000; // Bobot posisi king
 
-    // Skor berdasarkan jarak ke King lawan (semakin dekat semakin bagus)
+    score += cardValue * multiplier;
+
+    // B. Proximity Score (Mendekati Leader Lawan)
     const targetKing = isAI ? playerKing : enemyKing;
     const dist = SkillManager.getDistance(
       card.positionId,
       targetKing.positionId
     );
-    const proximityScore = (10 - dist) * 10;
 
-    if (isAI) score += value + proximityScore;
-    else score -= value + proximityScore;
+    // Memberi reward jika mendekati King musuh
+    if (dist > 0) {
+      score += (12 - dist) * 15 * multiplier;
+    }
+
+    // C. Cek Ancaman Menang (Sesuai Aturan PDF)
+    try {
+      if (isAI) {
+        // Jika AI bisa menangkap King Player di state ini
+        if (
+          SkillHandlers.checkAssassinCapture(
+            playerKing.positionId,
+            cards,
+            aiOwner,
+            SkillConstants.BOARD_CONFIG
+          ) ||
+          SkillHandlers.checkArcherCapture(
+            playerKing.positionId,
+            cards,
+            aiOwner,
+            SkillConstants.BOARD_CONFIG
+          ) ||
+          SkillHandlers.checkNormalCapture(
+            playerKing.positionId,
+            cards,
+            aiOwner,
+            SkillConstants.BOARD_CONFIG
+          )
+        ) {
+          score += BONUS_CAPTURE_THREAT;
+        }
+      } else {
+        // Jika Player bisa menangkap King AI di state ini
+        if (
+          SkillHandlers.checkAssassinCapture(
+            enemyKing.positionId,
+            cards,
+            playerOwner,
+            SkillConstants.BOARD_CONFIG
+          ) ||
+          SkillHandlers.checkArcherCapture(
+            enemyKing.positionId,
+            cards,
+            playerOwner,
+            SkillConstants.BOARD_CONFIG
+          ) ||
+          SkillHandlers.checkNormalCapture(
+            enemyKing.positionId,
+            cards,
+            playerOwner,
+            SkillConstants.BOARD_CONFIG
+          )
+        ) {
+          score -= BONUS_CAPTURE_THREAT;
+        }
+      }
+    } catch (e) {
+      /* ignore calculation errors */
+    }
+
+    // D. Sinergi Pertahanan (Protector di sebelah King)
+    if (type === "Protector") {
+      const distToOwnKing = SkillManager.getDistance(
+        card.positionId,
+        (isAI ? enemyKing : playerKing).positionId
+      );
+      if (distToOwnKing === 1) score += 300 * multiplier;
+    }
   });
 
   return score;
@@ -99,26 +180,28 @@ const getSimulatedMoves = (cards, currentTurn) => {
 
   currentPieces.forEach((piece) => {
     let validPositions = [];
-    // Logika gerakan sesuai tipe (Cavalier, normal, dll)
+    const type = piece.cardData.type;
+
     try {
-      if (piece.cardData.type === "Cavalier") {
+      // Tambahkan pengecekan skill yang bisa disimulasikan sebagai pergerakan
+      if (type === "Cavalier") {
         validPositions = SkillManager.getCavalierValidMoves(
           piece.positionId,
-          cards,
-          SkillConstants.BOARD_CONFIG
+          cards
         );
-      } else if (piece.cardData.type === "Rodeuse") {
+      } else if (type === "Rodeuse") {
         validPositions = SkillManager.getRodeuseValidMoves(
           piece.positionId,
           cards,
-          currentTurn,
-          SkillConstants.BOARD_CONFIG
+          currentTurn
         );
+      } else if (piece.isKing) {
+        // Gunakan fungsi getLeaderMoves yang sudah kamu buat
+        validPositions = getLeaderMoves(piece, cards);
       } else {
-        // Default: adjacent empty positions
+        // Gerakan standar adjacent
         validPositions = SkillManager.getAdjacentPositions(
-          piece.positionId,
-          SkillConstants.BOARD_CONFIG
+          piece.positionId
         ).filter((pos) => !cards.find((c) => c.positionId === pos));
       }
     } catch (e) {
@@ -126,11 +209,7 @@ const getSimulatedMoves = (cards, currentTurn) => {
     }
 
     validPositions.forEach((pos) => {
-      moves.push({
-        charType: piece.cardData.type,
-        from: piece.positionId,
-        to: pos,
-      });
+      moves.push({ charType: type, from: piece.positionId, to: pos });
     });
   });
   return moves;
@@ -554,9 +633,28 @@ export const aiRecruitmentPhase = ({
     return;
   }
 
+  // Sorting kartu yang tersedia berdasarkan value yang kita buat tadi
+  const heroPriority = {
+    Assassin: 5,
+    Archer: 4,
+    Protector: 3,
+    Geolier: 2,
+    Cavalier: 2,
+    Acrobate: 1,
+  };
+
+  const sortedAvailable = [...availableCards].sort(
+    (a, b) => (heroPriority[b.type] || 0) - (heroPriority[a.type] || 0)
+  );
+
+  // AI akan mencoba merekrut hero terbaik yang ada di 3 pilihan
+  // ini kodingan pemilihan kartu dengan pintar
+  const cardToRecruit = sortedAvailable[0];
+
   // choose random card
-  const cardToRecruit =
-    availableCards[Math.floor(Math.random() * availableCards.length)];
+  // ini yang lama masih random
+  // const cardToRecruit =
+  //   availableCards[Math.floor(Math.random() * availableCards.length)];
   const recruitmentSpaces = SkillConstants.RECRUITMENT_SPACES["enemy"] || [];
   const emptySpaces = recruitmentSpaces.filter(
     (pos) => !placedCards.find((p) => p.positionId === pos)
