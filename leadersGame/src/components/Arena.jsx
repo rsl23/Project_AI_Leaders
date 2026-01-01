@@ -883,6 +883,46 @@ const Arena = ({ mode = "pvp" }) => {
     // validPositions sudah berisi posisi 2 langkah (prioritas) atau 1 langkah jika 2 tidak ada
     const selectablePositions = nemesisMovement.validPositions;
 
+    // === AI MODE: Jika Nemesis milik enemy dan mode AI, otomatis pilih posisi ===
+    if (mode === "ai" && nemesisOwner === "enemy") {
+      const bestPosition = AIPlayer.aiChooseNemesisPosition(
+        selectablePositions,
+        nemesis,
+        currentPlacedCards,
+        nemesisOwner
+      );
+
+      if (bestPosition) {
+        const moveType =
+          nemesisMovement.twoSpacePositions &&
+          nemesisMovement.twoSpacePositions.includes(bestPosition)
+            ? "2 petak"
+            : "1 petak";
+
+        console.log(`🤖 AI Nemesis bergerak ke ${bestPosition} (${moveType})`);
+
+        // Update papan langsung
+        const newPlacedCards = currentPlacedCards.map((card) =>
+          card.positionId === nemesis.positionId
+            ? { ...card, positionId: bestPosition }
+            : card
+        );
+
+        setTimeout(() => {
+          alert(`⚔️ ENEMY's Nemesis bergerak ${moveType} ke ${bestPosition}!`);
+        }, 100);
+
+        // Set placed cards setelah delay untuk visual
+        setTimeout(() => {
+          setPlacedCards(newPlacedCards);
+          checkWinCondition();
+        }, 200);
+
+        return newPlacedCards;
+      }
+    }
+
+    // === PVP MODE atau Player's Nemesis: Biarkan pemain pilih manual ===
     console.log("📤 Setting Nemesis highlights:");
     console.log("- Positions to highlight:", nemesisMovement.validPositions);
     console.log("- Array:", nemesisMovement.validPositions);

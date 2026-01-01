@@ -29,25 +29,129 @@ const getLeaderMoves = (leader, placedCards) => {
   return emptyAdjacent;
 };
 
-// BFS shortest path distance treating occupied positions as walls (except target)
-const getPathDistance = (start, target, placedCards) => {
-  const occupied = new Set(placedCards.map((p) => p.positionId));
-  const queue = [[start, 0]];
-  const seen = new Set([start]);
-  while (queue.length > 0) {
-    const [pos, dist] = queue.shift();
-    if (pos === target) return dist;
-    const neighbors =
-      SkillManager.getAdjacentPositions(pos, SkillConstants.BOARD_CONFIG) || [];
-    for (const n of neighbors) {
-      if (seen.has(n)) continue;
-      // allow stepping onto target even if occupied (capture), otherwise neighbor must be empty
-      if (n !== target && occupied.has(n)) continue;
-      seen.add(n);
-      queue.push([n, dist + 1]);
-    }
+const transpositionTable = new Map();
+
+// Fungsi untuk membuat string unik dari kondisi board
+const getBoardHash = (cards) => {
+  return cards
+    .map((c) => `${c.cardData.type}${c.positionId}${c.owner}`)
+    .sort()
+    .join("|");
+};
+
+// ============================================
+// AI NEMESIS MOVEMENT
+// ============================================
+// Ketika Leader lawan bergerak, Nemesis AI harus memilih posisi terbaik
+
+/**
+ * AI memilih posisi terbaik untuk Nemesis bergerak
+ * @param {Array} validPositions - Posisi-posisi valid untuk Nemesis bergerak
+ * @param {Object} nemesis - Karakter Nemesis
+ * @param {Array} placedCards - Semua kartu di papan
+ * @param {string} nemesisOwner - "player" atau "enemy"
+ * @returns {string} - Posisi terbaik untuk Nemesis
+ */
+export const aiChooseNemesisPosition = (
+  validPositions,
+  nemesis,
+  placedCards,
+  nemesisOwner
+) => {
+  if (!validPositions || validPositions.length === 0) {
+    return null;
   }
-  return Infinity;
+
+  if (validPositions.length === 1) {
+    return validPositions[0];
+  }
+
+  const opponentOwner = nemesisOwner === "enemy" ? "player" : "enemy";
+  const opponentKing = placedCards.find(
+    (c) => c.owner === opponentOwner && c.isKing
+  );
+
+  if (!opponentKing) {
+    return validPositions[0];
+  }
+
+  console.log("🤖 AI Nemesis: Evaluating positions...");
+
+  let bestPosition = validPositions[0];
+  let bestScore = -Infinity;
+
+  validPositions.forEach((pos) => {
+    let score = 0;
+
+    // 1. Prioritas utama: Jarak ke King lawan (semakin dekat semakin baik)
+    const distToOpponentKing = SkillManager.getDistance(
+      pos,
+      opponentKing.positionId
+    );
+    score += (10 - distToOpponentKing) * 200;
+
+    // 2. Bonus jika adjacent dengan King lawan (posisi capture)
+    if (distToOpponentKing === 1) {
+      score += 500;
+    }
+
+    // 3. Cek apakah posisi ini mengancam capture (dengan bantuan ally)
+    try {
+      const simulatedCards = placedCards.map((c) =>
+        c.positionId === nemesis.positionId ? { ...c, positionId: pos } : c
+      );
+
+      // Cek normal capture threat
+      const adjacentToKing = SkillManager.getAdjacentPositions(
+        opponentKing.positionId,
+        SkillConstants.BOARD_CONFIG
+      );
+      const alliesAdjacentToKing = adjacentToKing.filter((adjPos) => {
+        const card = simulatedCards.find((c) => c.positionId === adjPos);
+        return card && card.owner === nemesisOwner && !card.isKing;
+      });
+
+      // Jika Nemesis di posisi ini + ada ally lain adjacent ke King = ancaman capture
+      if (adjacentToKing.includes(pos) && alliesAdjacentToKing.length >= 1) {
+        score += 800; // Tinggi karena ini posisi capture!
+      }
+    } catch (e) {
+      /* ignore */
+    }
+
+    // 4. Hindari posisi yang terlalu terbuka (tidak ada ally nearby)
+    const adjacentAllies = getAdjacentPositions(pos).filter((adjPos) => {
+      const card = placedCards.find((c) => c.positionId === adjPos);
+      return card && card.owner === nemesisOwner;
+    });
+    score += adjacentAllies.length * 30;
+
+    // 5. Hindari posisi adjacent dengan Geolier musuh (kalau ada ability)
+    const adjacentEnemyGeolier = getAdjacentPositions(pos).filter((adjPos) => {
+      const card = placedCards.find((c) => c.positionId === adjPos);
+      return (
+        card &&
+        card.owner === opponentOwner &&
+        card.cardData?.type === "Geolier"
+      );
+    });
+    score -= adjacentEnemyGeolier.length * 50;
+
+    console.log(
+      `  📊 Position ${pos}: Score = ${score} (dist to King: ${distToOpponentKing})`
+    );
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPosition = pos;
+    }
+  });
+
+  console.log(
+    `🤖 AI Nemesis: Best position = ${bestPosition} (Score: ${bestScore})`
+  );
+
+  return bestPosition;
 };
 
 // ============================================
@@ -56,13 +160,34 @@ const getPathDistance = (start, target, placedCards) => {
 // Evaluation constants
 // Algoritma Minimax dengan Alpha-Beta Pruning
 
-// Bobot Nilai Karakter (Material Value)
-const VALUE_KING = 1000000;
-const VALUE_ASSASSIN = 1200;
-const VALUE_ARCHER = 1100;
-const VALUE_PROTECTOR = 900;
-const VALUE_JAILER = 800;
-const VALUE_STANDARD = 500;
+// Bobot Nilai Karakter (Material Value) - SEMUA KARAKTER dari characterInfo.js
+const CHARACTER_VALUES = {
+  // === PASSIVE ABILITIES ===
+  Assassin: 1200, // Paling berbahaya - bisa capture Leader sendiri
+  Archer: 1100, // Bisa bantu capture dari 2 kotak
+  Protector: 900, // Melindungi ally dari ability musuh
+  Geolier: 850, // Memblokir active ability musuh
+  Vizir: 800, // Memberi Leader gerakan ekstra
+
+  // === ACTIVE ABILITIES ===
+  Cavalier: 750, // Mobilitas tinggi - 2 kotak lurus
+  Rodeuse: 700, // Mobilitas sangat tinggi - ke mana saja non-adjacent musuh
+  Acrobate: 720, // Lompatan strategis
+  LanceGrappin: 780, // Kontrol posisi - tarik/dorong
+  Manipulator: 760, // Kontrol musuh - pindahkan musuh
+  GardeRoyal: 700, // Teleport ke Leader + gerakan
+  Cogneur: 730, // Push musuh
+  Illusionist: 680, // Swap posisi
+  Tavernier: 650, // Support - pindahkan ally
+
+  // === SPECIAL ABILITIES ===
+  Nemesis: 850, // Reaktif - mengikuti Leader lawan
+  VieilOurs: 600, // Hermit - normal value
+  Cub: 400, // Tidak bisa bantu capture Leader
+
+  // === LEADER ===
+  king: 10000, // Leader sangat berharga
+};
 
 // Bobot Kondisi Papan
 const BONUS_CAPTURE_THREAT = 5000; // Jika dalam posisi siap menang
@@ -82,15 +207,11 @@ const evaluateState = (cards, aiOwner) => {
   cards.forEach((card) => {
     const isAI = card.owner === aiOwner;
     const multiplier = isAI ? 1 : -1;
-    let cardValue = VALUE_STANDARD;
-
-    // A. Material Score berdasarkan tipe di PDF
     const type = card.cardData?.type;
-    if (type === "Assassin") cardValue = VALUE_ASSASSIN;
-    else if (type === "Archer") cardValue = VALUE_ARCHER;
-    else if (type === "Protector") cardValue = VALUE_PROTECTOR;
-    else if (type === "Geolier") cardValue = VALUE_JAILER;
-    else if (card.isKing) cardValue = 10000; // Bobot posisi king
+
+    // A. Material Score - Gunakan nilai dari CHARACTER_VALUES
+    let cardValue = CHARACTER_VALUES[type] || 500;
+    if (card.isKing) cardValue = CHARACTER_VALUES.king;
 
     score += cardValue * multiplier;
 
@@ -161,13 +282,264 @@ const evaluateState = (cards, aiOwner) => {
       /* ignore calculation errors */
     }
 
-    // D. Sinergi Pertahanan (Protector di sebelah King)
+    // ================================================================
+    // BONUS POSISI STRATEGIS - SEMUA KARAKTER dari characterInfo.js
+    // ================================================================
+
+    const distToPlayerKing = SkillManager.getDistance(
+      card.positionId,
+      playerKing.positionId
+    );
+    const distToEnemyKing = SkillManager.getDistance(
+      card.positionId,
+      enemyKing.positionId
+    );
+    const ownKing = isAI ? enemyKing : playerKing;
+    const distToOwnKing = SkillManager.getDistance(
+      card.positionId,
+      ownKing.positionId
+    );
+
+    // === PASSIVE ABILITIES ===
+
+    // D. Protector - Bonus jika adjacent dengan King sendiri
     if (type === "Protector") {
-      const distToOwnKing = SkillManager.getDistance(
-        card.positionId,
-        (isAI ? enemyKing : playerKing).positionId
+      if (distToOwnKing === 1) score += 350 * multiplier;
+      // Bonus tambahan jika juga adjacent dengan ally lain
+      try {
+        const adjacentAllies = SkillManager.getAdjacentPositions(
+          card.positionId,
+          SkillConstants.BOARD_CONFIG
+        ).filter((pos) => {
+          const c = cards.find((x) => x.positionId === pos);
+          return c && c.owner === card.owner && !c.isKing;
+        });
+        score += adjacentAllies.length * 50 * multiplier;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // E. Geolier - Bonus jika adjacent dengan musuh (memblokir ability mereka)
+    if (type === "Geolier") {
+      try {
+        const adjacentEnemies = SkillManager.getAdjacentPositions(
+          card.positionId,
+          SkillConstants.BOARD_CONFIG
+        ).filter((pos) => {
+          const c = cards.find((x) => x.positionId === pos);
+          return c && c.owner !== card.owner;
+        });
+        // Bonus untuk setiap musuh yang diblokir
+        score += adjacentEnemies.length * 180 * multiplier;
+        // Bonus ekstra jika memblokir karakter dengan active ability berbahaya
+        adjacentEnemies.forEach((pos) => {
+          const blocked = cards.find((x) => x.positionId === pos);
+          if (
+            blocked &&
+            ["Assassin", "Cavalier", "LanceGrappin", "Manipulator"].includes(
+              blocked.cardData?.type
+            )
+          ) {
+            score += 100 * multiplier;
+          }
+        });
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // F. Vizir - Bonus karena buff Leader
+    if (type === "Vizir") {
+      score += 300 * multiplier;
+      // Bonus ekstra jika Leader masih hidup
+      if (ownKing) score += 200 * multiplier;
+    }
+
+    // G. Archer - Bonus posisi ideal (2 kotak dari King lawan, garis lurus)
+    if (type === "Archer") {
+      if (distToPlayerKing === 2 && isAI) {
+        try {
+          if (
+            SkillManager.isStraightLine(card.positionId, playerKing.positionId)
+          ) {
+            score += 600; // Posisi capture ideal
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      } else if (distToEnemyKing === 2 && !isAI) {
+        try {
+          if (
+            SkillManager.isStraightLine(card.positionId, enemyKing.positionId)
+          ) {
+            score -= 600;
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }
+    }
+
+    // H. Assassin - Bonus jika adjacent dengan King lawan
+    if (type === "Assassin") {
+      if (isAI && distToPlayerKing === 1) {
+        score += 800; // Sangat berbahaya!
+      } else if (!isAI && distToEnemyKing === 1) {
+        score -= 800;
+      }
+    }
+
+    // === ACTIVE ABILITIES ===
+
+    // I. Cavalier - Bonus mobilitas dan ancaman
+    if (type === "Cavalier") {
+      // Bonus jika dalam jarak 2 dari King lawan (bisa langsung menyerang)
+      if (isAI && distToPlayerKing <= 2) {
+        score += 200;
+      } else if (!isAI && distToEnemyKing <= 2) {
+        score -= 200;
+      }
+    }
+
+    // J. Rodeuse - Bonus fleksibilitas posisi
+    if (type === "Rodeuse") {
+      // Rodeuse lebih berharga di tengah papan (lebih banyak opsi)
+      try {
+        const validMoves = SkillManager.getRodeuseValidMoves(
+          card.positionId,
+          cards,
+          card.owner,
+          SkillConstants.BOARD_CONFIG
+        );
+        score += validMoves.length * 10 * multiplier;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // K. Acrobate - Bonus jika bisa lompat ke posisi strategis
+    if (type === "Acrobate") {
+      try {
+        const jumpPositions = SkillManager.getAcrobateJumpPositions(
+          card.positionId,
+          cards,
+          SkillConstants.BOARD_CONFIG
+        );
+        score += jumpPositions.length * 20 * multiplier;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // L. LanceGrappin - Bonus kontrol posisi
+    if (type === "LanceGrappin") {
+      try {
+        const targets = SkillManager.getLanceGrappinTargets(
+          card.positionId,
+          cards,
+          SkillConstants.BOARD_CONFIG
+        );
+        score += targets.length * 25 * multiplier;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // M. Manipulator - Bonus kontrol musuh
+    if (type === "Manipulator") {
+      try {
+        const targets = SkillManager.getManipulatorTargets(
+          card.positionId,
+          cards,
+          card.owner,
+          SkillConstants.BOARD_CONFIG
+        );
+        score += targets.length * 30 * multiplier;
+        // Bonus ekstra jika bisa memindahkan karakter berbahaya
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // N. GardeRoyal - Bonus jika dekat dengan King sendiri
+    if (type === "GardeRoyal") {
+      if (distToOwnKing === 1) {
+        score += 250 * multiplier; // Posisi ideal untuk melindungi
+      } else if (distToOwnKing <= 3) {
+        score += 100 * multiplier;
+      }
+    }
+
+    // O. Cogneur - Bonus jika adjacent dengan musuh (bisa push)
+    if (type === "Cogneur") {
+      try {
+        const targets = SkillManager.getCogneurTargets(
+          card.positionId,
+          cards,
+          card.owner,
+          SkillConstants.BOARD_CONFIG
+        );
+        score += targets.length * 35 * multiplier;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // P. Illusionist - Bonus fleksibilitas swap
+    if (type === "Illusionist") {
+      try {
+        const targets = SkillManager.getIllusionistTargets(
+          card.positionId,
+          cards,
+          card.owner,
+          SkillConstants.BOARD_CONFIG
+        );
+        score += targets.length * 20 * multiplier;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // Q. Tavernier - Bonus support (bisa pindahkan ally)
+    if (type === "Tavernier") {
+      try {
+        const targets = SkillManager.getTavernierTargets(
+          card.positionId,
+          cards,
+          card.owner,
+          SkillConstants.BOARD_CONFIG
+        );
+        score += targets.length * 15 * multiplier;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    // === SPECIAL ABILITIES ===
+
+    // R. Nemesis - Bonus semakin dekat dengan Leader lawan
+    if (type === "Nemesis") {
+      const targetKingDist = isAI ? distToPlayerKing : distToEnemyKing;
+      score += (7 - targetKingDist) * 120 * multiplier;
+    }
+
+    // S. VieilOurs (Hermit) - Bonus jika Cub juga masih ada
+    if (type === "VieilOurs") {
+      const hasCub = cards.some(
+        (c) => c.cardData?.type === "Cub" && c.owner === card.owner
       );
-      if (distToOwnKing === 1) score += 300 * multiplier;
+      if (hasCub) {
+        score += 150 * multiplier; // Sinergi
+      }
+    }
+
+    // T. Cub - Nilai lebih rendah tapi masih berguna untuk blocking
+    if (type === "Cub") {
+      // Bonus jika dekat King sendiri (bisa jadi blocker)
+      if (distToOwnKing <= 2) {
+        score += 50 * multiplier;
+      }
     }
   });
 
@@ -177,41 +549,229 @@ const evaluateState = (cards, aiOwner) => {
 const getSimulatedMoves = (cards, currentTurn) => {
   const moves = [];
   const currentPieces = cards.filter((p) => p.owner === currentTurn);
+  const opponentOwner = currentTurn === "enemy" ? "player" : "enemy";
+
+  // Helper: cek apakah karakter adjacent dengan Geolier musuh (blokir active ability)
+  const isBlockedByGeolier = (piecePos) => {
+    try {
+      return SkillHandlers.checkJailerEffect(
+        piecePos,
+        cards,
+        currentTurn,
+        SkillConstants.BOARD_CONFIG
+      );
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Helper: cek apakah karakter dilindungi Protector (tidak bisa dipindahkan ability musuh)
+  const isProtectedByProtector = (piecePos, pieceOwner) => {
+    try {
+      return SkillHandlers.checkProtectorEffect(
+        piecePos,
+        cards,
+        pieceOwner,
+        SkillConstants.BOARD_CONFIG
+      );
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Helper: dapatkan gerakan adjacent normal (untuk semua karakter)
+  const getNormalMoves = (positionId) => {
+    return SkillManager.getAdjacentPositions(
+      positionId,
+      SkillConstants.BOARD_CONFIG
+    ).filter((pos) => !cards.find((c) => c.positionId === pos));
+  };
 
   currentPieces.forEach((piece) => {
-    let validPositions = [];
     const type = piece.cardData.type;
+    const piecePos = piece.positionId;
+    const blockedByGeolier = isBlockedByGeolier(piecePos);
 
+    // === SPECIAL: Nemesis tidak bisa bergerak di action phase normal ===
+    if (type === "Nemesis") {
+      // Nemesis hanya bergerak sebagai reaksi ketika Leader lawan bergerak
+      // Tidak ada gerakan normal untuk Nemesis
+      return;
+    }
+
+    // === 1. GERAKAN NORMAL (Adjacent) - Semua karakter bisa ===
+    let normalPositions = [];
     try {
-      // Tambahkan pengecekan skill yang bisa disimulasikan sebagai pergerakan
-      if (type === "Cavalier") {
-        validPositions = SkillManager.getCavalierValidMoves(
-          piece.positionId,
-          cards
-        );
-      } else if (type === "Rodeuse") {
-        validPositions = SkillManager.getRodeuseValidMoves(
-          piece.positionId,
+      if (piece.isKing) {
+        // Leader: cek efek Vizir untuk gerakan tambahan
+        normalPositions = getLeaderMoves(piece, cards);
+
+        // Cek apakah ada Vizir untuk bonus gerakan
+        const hasVizir = SkillHandlers.checkVizirEffect(
+          piecePos,
           cards,
           currentTurn
         );
-      } else if (piece.isKing) {
-        // Gunakan fungsi getLeaderMoves yang sudah kamu buat
-        validPositions = getLeaderMoves(piece, cards);
+        if (hasVizir) {
+          // Leader bisa bergerak 2 langkah jika ada Vizir
+          const firstStepMoves = normalPositions;
+          firstStepMoves.forEach((firstPos) => {
+            const secondStepMoves = SkillManager.getAdjacentPositions(
+              firstPos,
+              SkillConstants.BOARD_CONFIG
+            ).filter(
+              (pos) =>
+                !cards.find((c) => c.positionId === pos) && pos !== piecePos // Tidak boleh kembali ke posisi awal
+            );
+            secondStepMoves.forEach((secondPos) => {
+              // Tambahkan sebagai move terpisah dengan flag vizir
+              moves.push({
+                charType: type,
+                from: piecePos,
+                to: secondPos,
+                moveType: "vizir_extended",
+                intermediate: firstPos,
+              });
+            });
+          });
+        }
       } else {
-        // Gerakan standar adjacent
-        validPositions = SkillManager.getAdjacentPositions(
-          piece.positionId
-        ).filter((pos) => !cards.find((c) => c.positionId === pos));
+        normalPositions = getNormalMoves(piecePos);
       }
     } catch (e) {
-      validPositions = [];
+      normalPositions = getNormalMoves(piecePos);
     }
 
-    validPositions.forEach((pos) => {
-      moves.push({ charType: type, from: piece.positionId, to: pos });
+    // Tambahkan semua gerakan normal
+    normalPositions.forEach((pos) => {
+      moves.push({
+        charType: type,
+        from: piecePos,
+        to: pos,
+        moveType: "normal",
+      });
     });
+
+    // === 2. GERAKAN ABILITY (Hanya jika tidak diblokir Geolier) ===
+    if (!blockedByGeolier) {
+      let abilityPositions = [];
+
+      try {
+        // === ACTIVE ABILITIES ===
+        if (type === "Cavalier") {
+          // Moves two spaces in a straight line
+          abilityPositions = SkillManager.getCavalierValidMoves(
+            piecePos,
+            cards,
+            SkillConstants.BOARD_CONFIG
+          );
+        } else if (type === "Rodeuse") {
+          // Moves to any space non-adjacent to an enemy
+          abilityPositions = SkillManager.getRodeuseValidMoves(
+            piecePos,
+            cards,
+            currentTurn,
+            SkillConstants.BOARD_CONFIG
+          );
+        } else if (type === "Acrobate") {
+          // Jump in a straight line past the character next to him
+          abilityPositions = SkillManager.getAcrobateJumpPositions(
+            piecePos,
+            cards,
+            SkillConstants.BOARD_CONFIG
+          );
+        } else if (type === "LanceGrappin") {
+          // Moves in a straight line to a visible character, OR drags them
+          // Filter target yang tidak dilindungi Protector
+          const allTargets = SkillManager.getLanceGrappinTargets(
+            piecePos,
+            cards,
+            SkillConstants.BOARD_CONFIG
+          );
+          abilityPositions = allTargets.filter((targetPos) => {
+            const targetCard = cards.find((c) => c.positionId === targetPos);
+            if (!targetCard) return true; // Posisi kosong OK
+            // Cek apakah target dilindungi Protector
+            return !isProtectedByProtector(targetPos, targetCard.owner);
+          });
+        } else if (type === "Manipulator") {
+          // Moves a non-adjacent enemy visible in a straight line
+          // Filter target yang tidak dilindungi Protector
+          const allTargets = SkillManager.getManipulatorTargets(
+            piecePos,
+            cards,
+            currentTurn,
+            SkillConstants.BOARD_CONFIG
+          );
+          abilityPositions = allTargets.filter((targetPos) => {
+            return !isProtectedByProtector(targetPos, opponentOwner);
+          });
+        } else if (type === "GardeRoyal") {
+          // Moves to a space adjacent to your Leader, then MAY move one space
+          abilityPositions = SkillManager.getGardeRoyalTeleportPositions(
+            piecePos,
+            cards,
+            currentTurn,
+            SkillConstants.BOARD_CONFIG
+          );
+        } else if (type === "Cogneur") {
+          // Moves to an adjacent enemy's space, pushing them
+          // Filter target yang tidak dilindungi Protector
+          const allTargets = SkillManager.getCogneurTargets(
+            piecePos,
+            cards,
+            currentTurn,
+            SkillConstants.BOARD_CONFIG
+          );
+          abilityPositions = allTargets.filter((targetPos) => {
+            return !isProtectedByProtector(targetPos, opponentOwner);
+          });
+        } else if (type === "Illusionist") {
+          // Switches places with a non-adjacent, visible champion in a straight line
+          abilityPositions = SkillManager.getIllusionistTargets(
+            piecePos,
+            cards,
+            currentTurn,
+            SkillConstants.BOARD_CONFIG
+          );
+        } else if (type === "Tavernier") {
+          // Moves an adjacent ally one space
+          // Filter target ally yang tidak dilindungi Protector musuh
+          const allTargets = SkillManager.getTavernierTargets(
+            piecePos,
+            cards,
+            currentTurn,
+            SkillConstants.BOARD_CONFIG
+          );
+          abilityPositions = allTargets;
+        }
+
+        // === SPECIAL: VieilOurs (Hermit & Cub) ===
+        if (type === "VieilOurs" || type === "Cub") {
+          // Hermit dan Cub bisa bergerak normal (sudah ditambahkan di atas)
+          // Cub tidak bisa membantu capture Leader (handled di evaluateState)
+        }
+      } catch (e) {
+        // Jika skill function error, abaikan ability moves
+        abilityPositions = [];
+      }
+
+      // Tambahkan gerakan ability (filter duplikat dengan normal moves)
+      abilityPositions.forEach((pos) => {
+        // Jangan duplikat jika sudah ada di normal moves
+        const isDuplicate = normalPositions.includes(pos);
+        if (!isDuplicate) {
+          moves.push({
+            charType: type,
+            from: piecePos,
+            to: pos,
+            moveType: "ability",
+          });
+        }
+      });
+    }
   });
+
   return moves;
 };
 
@@ -222,8 +782,36 @@ const applyMove = (cards, move) => {
   );
 };
 
+// Membantu Alpha-Beta memotong cabang lebih cepat
+const getOrderedMoves = (cards, currentTurn, aiOwner) => {
+  const moves = getSimulatedMoves(cards, currentTurn);
+  const playerOwner = aiOwner === "enemy" ? "player" : "enemy";
+  const playerKing = cards.find((p) => p.owner === playerOwner && p.isKing);
+
+  return moves.sort((a, b) => {
+    let scoreA = 0;
+    let scoreB = 0;
+
+    // Prioritas 1: Langkah yang mendekati King lawan
+    if (playerKing) {
+      scoreA -= SkillManager.getDistance(a.to, playerKing.positionId);
+      scoreB -= SkillManager.getDistance(b.to, playerKing.positionId);
+    }
+
+    // Prioritas 2: Utamakan unit berbahaya (Assassin/Archer)
+    if (a.charType === "Assassin") scoreA += 50;
+    if (b.charType === "Assassin") scoreB += 50;
+
+    return scoreB - scoreA;
+  });
+};
+
 const minimax = (cards, depth, alpha, beta, isMaximizing, aiOwner) => {
-  // Base case: Kedalaman habis atau ada yang menang
+  const boardHash = getBoardHash(cards);
+  if (transpositionTable.has(boardHash + depth)) {
+    return transpositionTable.get(boardHash + depth);
+  }
+
   if (depth === 0) return evaluateState(cards, aiOwner);
 
   const currentTurn = isMaximizing
@@ -231,10 +819,13 @@ const minimax = (cards, depth, alpha, beta, isMaximizing, aiOwner) => {
     : aiOwner === "enemy"
     ? "player"
     : "enemy";
-  const moves = getSimulatedMoves(cards, currentTurn);
+
+  // GUNAKAN MOVE ORDERING DI SINI
+  const moves = getOrderedMoves(cards, currentTurn, aiOwner);
 
   if (moves.length === 0) return evaluateState(cards, aiOwner);
 
+  let resultScore;
   if (isMaximizing) {
     let maxEval = -Infinity;
     for (const move of moves) {
@@ -242,9 +833,9 @@ const minimax = (cards, depth, alpha, beta, isMaximizing, aiOwner) => {
       const ev = minimax(nextBoard, depth - 1, alpha, beta, false, aiOwner);
       maxEval = Math.max(maxEval, ev);
       alpha = Math.max(alpha, ev);
-      if (beta <= alpha) break; // Pruning
+      if (beta <= alpha) break;
     }
-    return maxEval;
+    resultScore = maxEval;
   } else {
     let minEval = Infinity;
     for (const move of moves) {
@@ -252,219 +843,221 @@ const minimax = (cards, depth, alpha, beta, isMaximizing, aiOwner) => {
       const ev = minimax(nextBoard, depth - 1, alpha, beta, true, aiOwner);
       minEval = Math.min(minEval, ev);
       beta = Math.min(beta, ev);
-      if (beta <= alpha) break; // Pruning
+      if (beta <= alpha) break;
     }
-    return minEval;
+    resultScore = minEval;
   }
+
+  transpositionTable.set(boardHash + depth, resultScore);
+  return resultScore;
 };
 
 /////////////////////////////////////////////////////////////////////////
 // AI ACTION PHASE
 /////////////////////////////////////////////////////////////////////////
 
-// action phase lama menggunakan greedy pathfinding
-// export const aiActionPhase = ({
-//   // State
-//   placedCards,
-//   characterActions,
-//   // Setters
-//   setPlacedCards,
-//   setCharacterActions,
-//   setSelectedCharacter,
-//   setValidMovePositions,
-//   setCurrentPhase,
-//   // Refs
-//   aiThinking,
-//   setAiBusy,
-//   // Callbacks
-//   checkSkipRecruitment,
-// }) => {
-//   // Find enemy characters that haven't acted (include king)
-//   const enemies = placedCards.filter(
-//     (p) => p.owner === "enemy" && !characterActions[p.cardData.type]
-//   );
+// Helper: Eksekusi ability khusus berdasarkan tipe karakter
+const executeAbilityMove = async (
+  move,
+  placedCards,
+  setPlacedCards,
+  setSelectedCharacter,
+  setValidMovePositions
+) => {
+  const { charType, from, to, moveType } = move;
+  const character = placedCards.find((c) => c.positionId === from);
 
-//   if (enemies.length === 0) {
-//     // No enemies to act -> go to recruitment
-//     setCurrentPhase("recruitment");
-//     checkSkipRecruitment();
-//     aiThinking.current = false;
-//     setAiBusy(false);
-//     return;
-//   }
+  if (!character) return placedCards;
 
-//   // Choose a random available enemy to act (including king) to vary behavior
-//   const enemy = enemies[Math.floor(Math.random() * enemies.length)];
+  // Jika gerakan normal, langsung pindahkan
+  if (moveType === "normal" || moveType === "vizir_extended") {
+    return placedCards.map((c) =>
+      c.positionId === from ? { ...c, positionId: to } : c
+    );
+  }
 
-//   // Compute valid moves depending on character type
-//   let validMoves = [];
-//   const occupiedPositions = new Set(placedCards.map((p) => p.positionId));
+  // === EKSEKUSI ABILITY KHUSUS ===
+  let newPlacedCards = [...placedCards];
 
-//   try {
-//     switch (enemy.cardData.type) {
-//       case "Cavalier":
-//         validMoves = SkillManager.getCavalierValidMoves(
-//           enemy.positionId,
-//           placedCards,
-//           SkillConstants.BOARD_CONFIG
-//         );
-//         break;
-//       case "Acrobate":
-//         // Acrobate moves like normal (adjacent) during action phase; jump is an active ability
-//         validMoves = SkillManager.getAdjacentPositions(
-//           enemy.positionId,
-//           SkillConstants.BOARD_CONFIG
-//         ).filter((pos) => !occupiedPositions.has(pos));
-//         break;
-//       case "Rodeuse":
-//         validMoves = SkillManager.getRodeuseValidMoves(
-//           enemy.positionId,
-//           placedCards,
-//           "enemy",
-//           SkillConstants.BOARD_CONFIG
-//         );
-//         break;
-//       default:
-//         // Default: adjacent empty positions
-//         validMoves = SkillManager.getAdjacentPositions(
-//           enemy.positionId,
-//           SkillConstants.BOARD_CONFIG
-//         ).filter((pos) => !occupiedPositions.has(pos));
-//         break;
-//     }
-//   } catch (err) {
-//     validMoves = [];
-//   }
+  try {
+    switch (charType) {
+      case "Cavalier":
+        // Cavalier: pindah 2 kotak lurus (sama dengan normal move)
+        newPlacedCards = placedCards.map((c) =>
+          c.positionId === from ? { ...c, positionId: to } : c
+        );
+        break;
 
-//   // If enemy is king, allow leader moves (1-step adjacent)
-//   if (enemy.isKing) {
-//     try {
-//       validMoves = getLeaderMoves(enemy, placedCards);
-//     } catch (e) {
-//       // fallback to adjacent
-//       validMoves = SkillManager.getAdjacentPositions(
-//         enemy.positionId,
-//         SkillConstants.BOARD_CONFIG
-//       ).filter((pos) => !occupiedPositions.has(pos));
-//     }
-//   }
+      case "Rodeuse":
+        // Rodeuse: pindah ke posisi non-adjacent musuh
+        newPlacedCards = placedCards.map((c) =>
+          c.positionId === from ? { ...c, positionId: to } : c
+        );
+        break;
 
-//   // If no valid moves, mark as acted and continue
-//   if (!validMoves || validMoves.length === 0) {
-//     setCharacterActions((prev) => ({ ...prev, [enemy.cardData.type]: true }));
-//     aiThinking.current = false;
-//     setTimeout(() => setAiBusy(false), 200);
-//     return;
-//   }
+      case "Acrobate":
+        // Acrobate: lompat melewati karakter adjacent
+        newPlacedCards = placedCards.map((c) =>
+          c.positionId === from ? { ...c, positionId: to } : c
+        );
+        break;
 
-//   // Choose move using an epsilon-greedy approach
-//   const playerPositions = placedCards
-//     .filter((p) => p.owner === "player")
-//     .map((p) => p.positionId);
+      case "LanceGrappin":
+        // LanceGrappin: bisa pindah ke target ATAU tarik target ke adjacent
+        // Untuk simplisitas, AI akan pindah ke target
+        const lanceTarget = placedCards.find((c) => c.positionId === to);
+        if (lanceTarget) {
+          // Ada karakter di target - tarik mereka ke adjacent dari LanceGrappin
+          const adjacentToLance = SkillManager.getAdjacentPositions(
+            from,
+            SkillConstants.BOARD_CONFIG
+          );
+          const emptyAdjacent = adjacentToLance.filter(
+            (pos) => !placedCards.find((c) => c.positionId === pos)
+          );
+          if (emptyAdjacent.length > 0) {
+            // Tarik target ke posisi kosong terdekat
+            const pullTo = emptyAdjacent[0];
+            newPlacedCards = placedCards.map((c) => {
+              if (c.positionId === to) return { ...c, positionId: pullTo };
+              return c;
+            });
+          }
+        } else {
+          // Tidak ada karakter - LanceGrappin pindah ke sana
+          newPlacedCards = placedCards.map((c) =>
+            c.positionId === from ? { ...c, positionId: to } : c
+          );
+        }
+        break;
 
-//   const evaluateMove = (move) => {
-//     // lower is better
-//     let base = 0;
-//     if (playerPositions.length === 0) base = 0;
-//     else {
-//       const dists = playerPositions.map((pp) =>
-//         getPathDistance(move, pp, placedCards)
-//       );
-//       base = Math.min(...dists);
-//     }
+      case "Manipulator":
+        // Manipulator: pindahkan musuh non-adjacent 1 kotak
+        const manipTarget = placedCards.find((c) => c.positionId === to);
+        if (manipTarget) {
+          // Pindahkan target 1 kotak menjauhi Manipulator
+          const directionAway = SkillManager.getAdjacentPositions(
+            to,
+            SkillConstants.BOARD_CONFIG
+          );
+          const awayFromManip = directionAway.filter(
+            (pos) =>
+              !placedCards.find((c) => c.positionId === pos) &&
+              SkillManager.getDistance(pos, from) >
+                SkillManager.getDistance(to, from)
+          );
+          if (awayFromManip.length > 0) {
+            newPlacedCards = placedCards.map((c) => {
+              if (c.positionId === to)
+                return { ...c, positionId: awayFromManip[0] };
+              return c;
+            });
+          }
+        }
+        break;
 
-//     // simulate the placement after move
-//     const simulated = placedCards.map((p) =>
-//       p.positionId === enemy.positionId ? { ...p, positionId: move } : p
-//     );
+      case "GardeRoyal":
+        // GardeRoyal: teleport ke adjacent Leader, lalu bisa gerak 1
+        newPlacedCards = placedCards.map((c) =>
+          c.positionId === from ? { ...c, positionId: to } : c
+        );
+        break;
 
-//     // big bonus if this move enables immediate capture of player's king
-//     let kingCaptureBonus = 0;
-//     const playerKing = simulated.find((p) => p.owner === "player" && p.isKing);
-//     if (playerKing) {
-//       try {
-//         if (
-//           SkillHandlers.checkAssassinCapture &&
-//           SkillHandlers.checkAssassinCapture(
-//             playerKing.positionId,
-//             simulated,
-//             "enemy",
-//             SkillConstants.BOARD_CONFIG
-//           )
-//         )
-//           kingCaptureBonus = 1000;
-//         if (
-//           SkillHandlers.checkArcherCapture &&
-//           SkillHandlers.checkArcherCapture(
-//             playerKing.positionId,
-//             simulated,
-//             "enemy",
-//             SkillConstants.BOARD_CONFIG
-//           )
-//         )
-//           kingCaptureBonus = 1000;
-//         if (
-//           SkillHandlers.checkNormalCapture &&
-//           SkillHandlers.checkNormalCapture(
-//             playerKing.positionId,
-//             simulated,
-//             "enemy",
-//             SkillConstants.BOARD_CONFIG
-//           )
-//         )
-//           kingCaptureBonus = 1000;
-//       } catch (e) {
-//         // ignore
-//       }
-//     }
+      case "Cogneur":
+        // Cogneur: pindah ke posisi musuh, dorong musuh ke sisi berlawanan
+        const cogneurTarget = placedCards.find((c) => c.positionId === to);
+        if (cogneurTarget) {
+          // Hitung arah dorong (berlawanan dari arah datang Cogneur)
+          const pushDirection = SkillManager.getAdjacentPositions(
+            to,
+            SkillConstants.BOARD_CONFIG
+          );
+          const pushAway = pushDirection.filter(
+            (pos) =>
+              !placedCards.find((c) => c.positionId === pos) &&
+              SkillManager.getDistance(pos, from) >
+                SkillManager.getDistance(to, from)
+          );
+          if (pushAway.length > 0) {
+            newPlacedCards = placedCards.map((c) => {
+              if (c.positionId === from) return { ...c, positionId: to };
+              if (c.positionId === to) return { ...c, positionId: pushAway[0] };
+              return c;
+            });
+          } else {
+            // Tidak bisa dorong, Cogneur tetap pindah
+            newPlacedCards = placedCards.map((c) =>
+              c.positionId === from ? { ...c, positionId: to } : c
+            );
+          }
+        }
+        break;
 
-//     // vulnerability penalty: how many player pieces adjacent to the moved position
-//     const vulnerability = placedCards.filter(
-//       (p) =>
-//         p.owner === "player" &&
-//         SkillManager.isAdjacent(p.positionId, move, SkillConstants.BOARD_CONFIG)
-//     ).length;
+      case "Illusionist":
+        // Illusionist: swap posisi dengan karakter lain
+        const illusionTarget = placedCards.find((c) => c.positionId === to);
+        if (illusionTarget) {
+          newPlacedCards = placedCards.map((c) => {
+            if (c.positionId === from) return { ...c, positionId: to };
+            if (c.positionId === to) return { ...c, positionId: from };
+            return c;
+          });
+        }
+        break;
 
-//     const score = base - kingCaptureBonus + vulnerability * 3; // lower is better
-//     return score;
-//   };
+      case "Tavernier":
+        // Tavernier: pindahkan ally adjacent 1 kotak
+        const tavernierTarget = placedCards.find((c) => c.positionId === to);
+        if (tavernierTarget && tavernierTarget.owner === "enemy") {
+          // Pindahkan ally ke posisi kosong adjacent
+          const allyMoves = SkillManager.getAdjacentPositions(
+            to,
+            SkillConstants.BOARD_CONFIG
+          ).filter((pos) => !placedCards.find((c) => c.positionId === pos));
+          if (allyMoves.length > 0) {
+            // Pilih posisi yang mendekati King player
+            const playerKing = placedCards.find(
+              (c) => c.owner === "player" && c.isKing
+            );
+            let bestAllyMove = allyMoves[0];
+            if (playerKing) {
+              bestAllyMove = allyMoves.reduce((best, pos) => {
+                const distBest = SkillManager.getDistance(
+                  best,
+                  playerKing.positionId
+                );
+                const distPos = SkillManager.getDistance(
+                  pos,
+                  playerKing.positionId
+                );
+                return distPos < distBest ? pos : best;
+              }, allyMoves[0]);
+            }
+            newPlacedCards = placedCards.map((c) => {
+              if (c.positionId === to)
+                return { ...c, positionId: bestAllyMove };
+              return c;
+            });
+          }
+        }
+        break;
 
-//   // pick best according to evaluation (lower score preferred)
-//   let best = validMoves[0];
-//   let bestScore = evaluateMove(best);
-//   for (const m of validMoves) {
-//     const s = evaluateMove(m);
-//     if (s < bestScore) {
-//       best = m;
-//       bestScore = s;
-//     }
-//   }
+      default:
+        // Default: gerakan normal
+        newPlacedCards = placedCards.map((c) =>
+          c.positionId === from ? { ...c, positionId: to } : c
+        );
+    }
+  } catch (e) {
+    // Jika error, fallback ke gerakan normal
+    console.error("Error executing ability:", e);
+    newPlacedCards = placedCards.map((c) =>
+      c.positionId === from ? { ...c, positionId: to } : c
+    );
+  }
 
-//   // epsilon-greedy: usually pick best, sometimes random to keep variety
-//   const pickBestProb = 0.75;
-//   const chosenMove =
-//     Math.random() < pickBestProb
-//       ? best
-//       : validMoves[Math.floor(Math.random() * validMoves.length)];
-
-//   // Show selection + highlights first (mimic player UX)
-//   setSelectedCharacter(enemy);
-//   setValidMovePositions(validMoves);
-
-//   setTimeout(() => {
-//     const newPlaced = placedCards.map((p) =>
-//       p.positionId === enemy.positionId ? { ...p, positionId: chosenMove } : p
-//     );
-//     setPlacedCards(newPlaced);
-//     setCharacterActions((prev) => ({ ...prev, [enemy.cardData.type]: true }));
-//     // clear selection/highlight
-//     setSelectedCharacter(null);
-//     setValidMovePositions([]);
-//     // allow next AI step after short delay
-//     aiThinking.current = false;
-//     setAiBusy(false);
-//   }, 700);
-// };
+  return newPlacedCards;
+};
 
 // Ai action phase baru menggunakan Minimax dengan Alpha-Beta Pruning
 export const aiActionPhase = (params) => {
@@ -481,122 +1074,199 @@ export const aiActionPhase = (params) => {
     checkSkipRecruitment,
   } = params;
 
-  // AI mencari semua langkah yang mungkin untuk semua karakternya yang belum gerak
-  const enemiesReady = placedCards.filter(
-    (p) => p.owner === "enemy" && !characterActions[p.cardData.type]
-  );
+  // 1. Set state sibuk agar UI tahu AI mulai berpikir
+  setAiBusy(true);
+  aiThinking.current = true;
 
-  if (enemiesReady.length === 0) {
-    // Tidak ada karakter yang bisa bergerak -> pindah ke recruitment phase
-    setCurrentPhase("recruitment");
-    checkSkipRecruitment();
-    aiThinking.current = false;
-    setAiBusy(false);
-    return;
-  }
+  // Gunakan setTimeout 100ms agar browser sempat merender state "AI Thinking..." di layar
+  setTimeout(() => {
+    transpositionTable.clear();
 
-  // Dapatkan semua langkah yang mungkin untuk karakter yang belum bergerak
-  const allPossibleMoves = getSimulatedMoves(placedCards, "enemy").filter(
-    (m) => !characterActions[m.charType]
-  );
-
-  // Jika tidak ada langkah yang valid
-  if (allPossibleMoves.length === 0) {
-    // Mark all remaining enemies as acted
-    const newActions = { ...characterActions };
-    enemiesReady.forEach((e) => {
-      newActions[e.cardData.type] = true;
-    });
-    setCharacterActions(newActions);
-
-    // Pindah ke recruitment phase
-    setCurrentPhase("recruitment");
-    checkSkipRecruitment();
-    aiThinking.current = false;
-    setAiBusy(false);
-    return;
-  }
-
-  let bestMove = null;
-  let bestScore = -Infinity;
-
-  // Mencari langkah terbaik menggunakan Minimax dengan Depth 2
-  allPossibleMoves.forEach((move) => {
-    const simulatedBoard = applyMove(placedCards, move);
-    // Depth 2: AI gerak -> Player gerak -> Evaluasi
-    const score = minimax(
-      simulatedBoard,
-      2,
-      -Infinity,
-      Infinity,
-      false,
-      "enemy"
+    const enemiesReady = placedCards.filter(
+      (p) => p.owner === "enemy" && !characterActions[p.cardData.type]
     );
 
-    if (score > bestScore) {
-      bestScore = score;
-      bestMove = move;
-    }
-  });
-
-  if (bestMove) {
-    // Cari karakter yang akan bergerak untuk visualisasi
-    const chosenChar = placedCards.find((c) => c.positionId === bestMove.from);
-
-    // Hitung valid moves untuk highlight
-    let validMoves = [];
-    try {
-      if (chosenChar.cardData.type === "Cavalier") {
-        validMoves = SkillManager.getCavalierValidMoves(
-          chosenChar.positionId,
-          placedCards,
-          SkillConstants.BOARD_CONFIG
-        );
-      } else if (chosenChar.cardData.type === "Rodeuse") {
-        validMoves = SkillManager.getRodeuseValidMoves(
-          chosenChar.positionId,
-          placedCards,
-          "enemy",
-          SkillConstants.BOARD_CONFIG
-        );
-      } else {
-        validMoves = SkillManager.getAdjacentPositions(
-          chosenChar.positionId,
-          SkillConstants.BOARD_CONFIG
-        ).filter((pos) => !placedCards.find((c) => c.positionId === pos));
-      }
-    } catch (e) {
-      validMoves = [bestMove.to];
-    }
-
-    // Show selection + highlights (mimic player UX)
-    setSelectedCharacter(chosenChar);
-    setValidMovePositions(validMoves);
-
-    setTimeout(() => {
-      const newPlaced = placedCards.map((p) =>
-        p.positionId === bestMove.from ? { ...p, positionId: bestMove.to } : p
-      );
-      setPlacedCards(newPlaced);
-      setCharacterActions((prev) => ({ ...prev, [bestMove.charType]: true }));
-
-      // Clear selection/highlight
-      setSelectedCharacter(null);
-      setValidMovePositions([]);
-
+    if (enemiesReady.length === 0) {
+      setCurrentPhase("recruitment");
+      checkSkipRecruitment();
       aiThinking.current = false;
       setAiBusy(false);
-    }, 700);
-  } else {
-    // Fallback: tidak ada move yang ditemukan
-    aiThinking.current = false;
-    setAiBusy(false);
-  }
+      return;
+    }
+
+    // 2. Ambil semua langkah (termasuk SKILL jika memungkinkan)
+    const allPossibleMoves = getOrderedMoves(
+      placedCards,
+      "enemy",
+      "enemy"
+    ).filter((m) => !characterActions[m.charType]);
+
+    if (allPossibleMoves.length === 0) {
+      // Tidak ada move tersedia, skip ke recruitment
+      setCurrentPhase("recruitment");
+      checkSkipRecruitment();
+      aiThinking.current = false;
+      setAiBusy(false);
+      return;
+    }
+
+    let bestMove = null;
+    let bestScore = -Infinity;
+
+    // 3. Perhitungan Minimax (Ini yang memakan waktu)
+    allPossibleMoves.forEach((move) => {
+      const simulatedBoard = applyMove(placedCards, move);
+      const score = minimax(
+        simulatedBoard,
+        4,
+        -Infinity,
+        Infinity,
+        false,
+        "enemy"
+      );
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = move;
+      }
+    });
+
+    // 4. Setelah ketemu Best Move, baru jalankan visualisasi
+    if (bestMove) {
+      const chosenChar = placedCards.find(
+        (c) => c.positionId === bestMove.from
+      );
+      setSelectedCharacter(chosenChar);
+
+      // Highlight petak tujuan
+      setValidMovePositions([bestMove.to]);
+
+      // Log untuk debugging
+      console.log(
+        `🤖 AI Move: ${bestMove.charType} from ${bestMove.from} to ${bestMove.to} (${bestMove.moveType}) | Score: ${bestScore}`
+      );
+
+      // Delay visual sebelum karakter benar-benar pindah
+      setTimeout(async () => {
+        // Eksekusi ability dengan benar
+        const newPlaced = await executeAbilityMove(
+          bestMove,
+          placedCards,
+          setPlacedCards,
+          setSelectedCharacter,
+          setValidMovePositions
+        );
+
+        setPlacedCards(newPlaced);
+        setCharacterActions((prev) => ({ ...prev, [bestMove.charType]: true }));
+
+        setSelectedCharacter(null);
+        setValidMovePositions([]);
+        aiThinking.current = false;
+        setAiBusy(false);
+      }, 800);
+    } else {
+      // Tidak ada best move, skip
+      aiThinking.current = false;
+      setAiBusy(false);
+    }
+  }, 500); // Jeda awal 0.5 detik agar pemain merasa AI sedang "melihat papan"
 };
 
 // ============================================
-// AI RECRUITMENT PHASE
+// AI RECRUITMENT PHASE - MINIMAX VERSION
 // ============================================
+
+// Minimax khusus untuk recruitment (depth lebih rendah untuk performa)
+const minimaxRecruitment = (
+  cards,
+  depth,
+  alpha,
+  beta,
+  isMaximizing,
+  aiOwner
+) => {
+  if (depth === 0) return evaluateState(cards, aiOwner);
+
+  const currentTurn = isMaximizing
+    ? aiOwner
+    : aiOwner === "enemy"
+    ? "player"
+    : "enemy";
+
+  const moves = getSimulatedMoves(cards, currentTurn);
+
+  if (moves.length === 0) return evaluateState(cards, aiOwner);
+
+  if (isMaximizing) {
+    let maxEval = -Infinity;
+    for (const move of moves) {
+      const nextBoard = applyMove(cards, move);
+      const ev = minimaxRecruitment(
+        nextBoard,
+        depth - 1,
+        alpha,
+        beta,
+        false,
+        aiOwner
+      );
+      maxEval = Math.max(maxEval, ev);
+      alpha = Math.max(alpha, ev);
+      if (beta <= alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = Infinity;
+    for (const move of moves) {
+      const nextBoard = applyMove(cards, move);
+      const ev = minimaxRecruitment(
+        nextBoard,
+        depth - 1,
+        alpha,
+        beta,
+        true,
+        aiOwner
+      );
+      minEval = Math.min(minEval, ev);
+      beta = Math.min(beta, ev);
+      if (beta <= alpha) break;
+    }
+    return minEval;
+  }
+};
+
+// Evaluasi recruitment dengan Minimax
+const evaluateRecruitmentOption = (card, position, placedCards, enemyColor) => {
+  // Buat karakter baru yang akan direkrut
+  const characterImage = `/Assets/Pions_personnages/${
+    enemyColor === "white" ? "Blanc" : "Noir"
+  }/Leaders_BGA_${enemyColor === "white" ? "white" : "black"}_${card.type}.png`;
+
+  const newPiece = {
+    positionId: position,
+    cardImage: characterImage,
+    cardData: card,
+    owner: "enemy",
+    isKing: false,
+  };
+
+  // Simulasikan papan setelah recruitment
+  const simulatedBoard = [...placedCards, newPiece];
+
+  // Gunakan Minimax depth 2 untuk evaluasi (cukup cepat)
+  // Depth 2 = AI recruit -> Player action -> evaluasi
+  const score = minimaxRecruitment(
+    simulatedBoard,
+    2,
+    -Infinity,
+    Infinity,
+    false, // Setelah AI recruit, giliran player
+    "enemy"
+  );
+
+  return score;
+};
+
 export const aiRecruitmentPhase = ({
   // State
   placedCards,
@@ -633,28 +1303,6 @@ export const aiRecruitmentPhase = ({
     return;
   }
 
-  // Sorting kartu yang tersedia berdasarkan value yang kita buat tadi
-  const heroPriority = {
-    Assassin: 5,
-    Archer: 4,
-    Protector: 3,
-    Geolier: 2,
-    Cavalier: 2,
-    Acrobate: 1,
-  };
-
-  const sortedAvailable = [...availableCards].sort(
-    (a, b) => (heroPriority[b.type] || 0) - (heroPriority[a.type] || 0)
-  );
-
-  // AI akan mencoba merekrut hero terbaik yang ada di 3 pilihan
-  // ini kodingan pemilihan kartu dengan pintar
-  const cardToRecruit = sortedAvailable[0];
-
-  // choose random card
-  // ini yang lama masih random
-  // const cardToRecruit =
-  //   availableCards[Math.floor(Math.random() * availableCards.length)];
   const recruitmentSpaces = SkillConstants.RECRUITMENT_SPACES["enemy"] || [];
   const emptySpaces = recruitmentSpaces.filter(
     (pos) => !placedCards.find((p) => p.positionId === pos)
@@ -665,31 +1313,88 @@ export const aiRecruitmentPhase = ({
     return;
   }
 
-  // choose among top candidates near player's pieces (prefer aggressive placement)
-  const playerPositions = placedCards
-    .filter((p) => p.owner === "player")
-    .map((p) => p.positionId);
-  const scorePos = (p) => {
-    if (playerPositions.length === 0) return 0;
-    const dists = playerPositions.map((pp) => SkillManager.getDistance(p, pp));
-    return Math.min(...dists);
-  };
-  const sorted = [...emptySpaces].sort((a, b) => scorePos(a) - scorePos(b));
-  const topN = sorted.slice(0, Math.min(2, sorted.length));
-  const pos = topN[Math.floor(Math.random() * topN.length)];
+  console.log("🤖 AI Recruitment: Evaluating options with Minimax...");
+
+  // === MINIMAX EVALUATION ===
+  // Evaluasi semua kombinasi kartu + posisi
+  let bestCard = null;
+  let bestPosition = null;
+  let bestScore = -Infinity;
+
+  availableCards.forEach((card) => {
+    emptySpaces.forEach((position) => {
+      const score = evaluateRecruitmentOption(
+        card,
+        position,
+        placedCards,
+        enemyColor
+      );
+
+      console.log(`  📊 ${card.type} at ${position}: Score = ${score}`);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestCard = card;
+        bestPosition = position;
+      }
+    });
+  });
+
+  if (!bestCard || !bestPosition) {
+    // Fallback: pilih random jika tidak ada best
+    bestCard = availableCards[0];
+    bestPosition = emptySpaces[0];
+  }
+
+  console.log(
+    `🤖 AI Recruiting: ${bestCard.type} at ${bestPosition} (Minimax Score: ${bestScore})`
+  );
 
   const characterImage = `/Assets/Pions_personnages/${
     enemyColor === "white" ? "Blanc" : "Noir"
   }/Leaders_BGA_${enemyColor === "white" ? "white" : "black"}_${
-    cardToRecruit.type
+    bestCard.type
   }.png`;
 
   // If VieilOurs, place both VieilOurs and Ourson immediately
-  if (cardToRecruit.type === "VieilOurs") {
-    const remainingSpaces = emptySpaces.filter((s) => s !== pos);
+  if (bestCard.type === "VieilOurs") {
+    const remainingSpaces = emptySpaces.filter((s) => s !== bestPosition);
     if (remainingSpaces.length > 0) {
-      const oursonPos =
-        remainingSpaces[Math.floor(Math.random() * remainingSpaces.length)];
+      // Pilih posisi Ourson terbaik dengan Minimax juga
+      let bestOursonPos = remainingSpaces[0];
+      let bestOursonScore = -Infinity;
+
+      remainingSpaces.forEach((oursonPos) => {
+        const oursonImage = `/Assets/Pions_personnages/${
+          enemyColor === "white" ? "Blanc" : "Noir"
+        }/Leaders_BGA_${enemyColor === "white" ? "white" : "black"}_Ourson.png`;
+
+        const simulatedBoard = [
+          ...placedCards,
+          {
+            positionId: bestPosition,
+            cardImage: characterImage,
+            cardData: bestCard,
+            owner: "enemy",
+            isKing: false,
+          },
+          {
+            positionId: oursonPos,
+            cardImage: oursonImage,
+            cardData: { type: "Ourson" },
+            owner: "enemy",
+            isKing: false,
+            isOurson: true,
+          },
+        ];
+
+        const score = evaluateState(simulatedBoard, "enemy");
+        if (score > bestOursonScore) {
+          bestOursonScore = score;
+          bestOursonPos = oursonPos;
+        }
+      });
+
       const oursonImage = `/Assets/Pions_personnages/${
         enemyColor === "white" ? "Blanc" : "Noir"
       }/Leaders_BGA_${enemyColor === "white" ? "white" : "black"}_Ourson.png`;
@@ -697,14 +1402,14 @@ export const aiRecruitmentPhase = ({
       const newPlaced = [
         ...placedCards,
         {
-          positionId: pos,
+          positionId: bestPosition,
           cardImage: characterImage,
-          cardData: cardToRecruit,
+          cardData: bestCard,
           owner: "enemy",
           isKing: false,
         },
         {
-          positionId: oursonPos,
+          positionId: bestOursonPos,
           cardImage: oursonImage,
           cardData: { type: "Ourson" },
           owner: "enemy",
@@ -714,7 +1419,7 @@ export const aiRecruitmentPhase = ({
       ];
 
       let finalAvailable = availableCards.filter(
-        (av) => av.type !== cardToRecruit.type
+        (av) => av.type !== bestCard.type
       );
       let finalDeck = [...deck];
       if (deck.length > 0) {
@@ -746,17 +1451,15 @@ export const aiRecruitmentPhase = ({
   const newPlaced = [
     ...placedCards,
     {
-      positionId: pos,
+      positionId: bestPosition,
       cardImage: characterImage,
-      cardData: cardToRecruit,
+      cardData: bestCard,
       owner: "enemy",
       isKing: false,
     },
   ];
 
-  let finalAvailable = availableCards.filter(
-    (av) => av.type !== cardToRecruit.type
-  );
+  let finalAvailable = availableCards.filter((av) => av.type !== bestCard.type);
   let finalDeck = [...deck];
   if (deck.length > 0) {
     finalAvailable = [...finalAvailable, deck[0]];
