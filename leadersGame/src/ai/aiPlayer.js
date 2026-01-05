@@ -1097,7 +1097,8 @@ export const aiActionPhase = (params) => {
     aiThinking,
     setAiBusy,
     checkSkipRecruitment,
-    difficulty = "Medium", // TERIMA PARAMETER DIFFICULTY
+    onAILeaderMove, // Callback ketika AI Leader bergerak (untuk trigger Nemesis player)
+    difficulty = "Hard", // Default ke Hard (depth 4) agar AI pintar
   } = params;
 
   // 1. Set state sibuk agar UI tahu AI mulai berpikir
@@ -1136,6 +1137,11 @@ export const aiActionPhase = (params) => {
 
         setPlacedCards(newPlaced);
         setCharacterActions((prev) => ({ ...prev, [move.charType]: true }));
+
+        // Jika AI Leader bergerak, trigger Nemesis player
+        if (chosenChar && chosenChar.isKing && onAILeaderMove) {
+          onAILeaderMove(newPlaced);
+        }
 
         setSelectedCharacter(null);
         setValidMovePositions([]);
@@ -1331,7 +1337,7 @@ export const aiRecruitmentPhase = ({
   // Callbacks
   handleEndTurnForAI,
   // Params
-  difficulty = "Medium", // Default difficulty
+  difficulty = "Hard", // Default ke Hard agar AI pintar
 }) => {
   // Enforce max 4 recruited (excluding king/ourson)
   const enemyRecruitedCount = placedCards.filter(

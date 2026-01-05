@@ -19,8 +19,8 @@ const ArenaVsAI = () => {
   
   // === DIFFICULTY STATE ===
   const location = useLocation();
-  // Default ke "Medium" jika user masuk langsung tanpa lewat menu
-  const difficulty = location.state?.difficulty || "Medium";
+  // Default ke "Hard" jika user masuk langsung tanpa lewat menu
+  const difficulty = location.state?.difficulty || "Hard";
 
   // === GAME STATE ===
   const [gamePhase, setGamePhase] = useState("placement");
@@ -1382,7 +1382,11 @@ const ArenaVsAI = () => {
         setRecruitmentPhase,  
         handleEndTurnForAI,   
         currentPhase,
-        difficulty // <-- DIFFICULTY DIKIRIM KE SINI
+        difficulty,
+        // Callback ketika AI Leader bergerak - trigger Nemesis player
+        onAILeaderMove: (newCards) => {
+          checkNemesisMovement("enemy", newCards);
+        }
     };
 
     // Panggil fungsi utama dari aiPlayer.js
