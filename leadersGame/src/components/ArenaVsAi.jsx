@@ -4,18 +4,23 @@ import MuteButton from "./MuteButton";
 import CardDeck from "./CardDeck";
 import GameInfo from "./GameInfo";
 import GameBoard from "./GameBoard";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { characterInfo } from "../data/characterInfo";
 
 import * as SkillManager from "../skill/skillManager";
 import * as SkillHandlers from "../skill/skillHandlers";
 import * as SkillConstants from "../skill/skillConstants";
-import { aiChooseNemesisPosition } from "../ai/aiPlayer";
 
-// This file is a manual copy of Arena.jsx adapted for AI-specific logic.
-// Component renamed to ArenaVsAI so it does not import or reuse Arena.
+// IMPORT AI LOGIC DARI MODULE TERPISAH
+import { aiChooseNemesisPosition, runAITurn } from "../ai/aiPlayer";
+
 const ArenaVsAI = () => {
   const audioRef = useRef(null);
+  
+  // === DIFFICULTY STATE ===
+  const location = useLocation();
+  // Default ke "Medium" jika user masuk langsung tanpa lewat menu
+  const difficulty = location.state?.difficulty || "Medium";
 
   // === GAME STATE ===
   const [gamePhase, setGamePhase] = useState("placement");
@@ -57,7 +62,6 @@ const ArenaVsAI = () => {
   // AI helper refs/state
   const aiThinking = useRef(false);
   const [aiBusy, setAiBusy] = useState(false);
-  const originalHandlers = useRef({});
 
   // --- Initialization (same deck and initial placement as Arena) ---
   useEffect(() => {
@@ -152,10 +156,6 @@ const ArenaVsAI = () => {
     setCurrentPhase("action");
   }, []);
 
-  // --- Copy of Arena handlers and UI ---
-  // For accuracy and to keep UI identical to Arena, most handlers are copied from Arena.jsx.
-  // AI-specific behavior should be implemented by modifying these handlers below.
-
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = 0.5;
@@ -171,7 +171,6 @@ const ArenaVsAI = () => {
     }
   };
 
-  // Keep core Arena functions so UI behaves the same; you can edit these for AI logic.
   const handleCardSelect = (card) => {
     if (gamePhase === "battle" && turn !== "player") return;
     if (gamePhase === "battle" && currentPhase === "recruitment") {
@@ -327,7 +326,6 @@ const ArenaVsAI = () => {
           );
           break;
         default:
-          // For characters without special active ability logic
           setActiveAbilityUsed({
             ...activeAbilityUsed,
             [characterType]: true,
@@ -352,13 +350,6 @@ const ArenaVsAI = () => {
     }
   };
 
-  // --- Other handlers copied from Arena.jsx (omitted here for brevity) ---
-  // To keep the file concise, the full set of ability handlers and movement logic
-  // from Arena.jsx can be added here. At this stage the component is a manual
-  // duplicate of Arena's structure; modify the handlers above and below to
-  // implement AI-specific behavior where needed.
-
-  // === BATTLE PHASE HANDLERS (copied from Arena.jsx) ===
   const finishCharacterAction = (charType) => {
     setCharacterActions({ ...characterActions, [charType]: true });
     setSelectedCharacter(null);
@@ -441,10 +432,6 @@ const ArenaVsAI = () => {
         );
         return;
       }
-
-      const adjacentPositions = getAdjacentPositions(
-        selectedCharacter.positionId
-      );
 
       if (validMovePositions.includes(position.id)) {
         if (selectedCharacter.cardData.type === "king") {
@@ -561,7 +548,6 @@ const ArenaVsAI = () => {
 
     // === AI NEMESIS: Otomatis pilih posisi terbaik ===
     if (nemesisOwner === "enemy") {
-      // AI's Nemesis - pilih posisi terbaik secara otomatis
       const bestPosition = aiChooseNemesisPosition(
         selectablePositions,
         nemesis,
@@ -576,7 +562,6 @@ const ArenaVsAI = () => {
             ? "2 petak"
             : "1 petak";
 
-        // Update papan langsung
         const newPlacedCards = currentPlacedCards.map((card) =>
           card.positionId === nemesis.positionId
             ? { ...card, positionId: bestPosition }
@@ -587,7 +572,6 @@ const ArenaVsAI = () => {
           alert(`⚔️ ENEMY's Nemesis bergerak ${moveType} ke ${bestPosition}!`);
         }, 100);
 
-        // Set placed cards setelah delay untuk visual
         setTimeout(() => {
           setPlacedCards(newPlacedCards);
           checkWinCondition();
@@ -597,7 +581,6 @@ const ArenaVsAI = () => {
       }
     }
 
-    // === PLAYER's Nemesis: Biarkan player pilih manual ===
     setNemesisMustMove({
       nemesis,
       validPositions: selectablePositions,
@@ -624,7 +607,7 @@ const ArenaVsAI = () => {
 
   const handleNemesisMoveSelection = (position) => {
     if (!nemesisMustMove) return;
-    const { nemesis, validPositions, pendingCards, owner } = nemesisMustMove;
+    const { nemesis, validPositions, pendingCards } = nemesisMustMove;
     if (!validPositions.includes(position.id)) {
       alert("Posisi tidak valid! Pilih posisi yang di-highlight.");
       return;
@@ -1018,21 +1001,17 @@ const ArenaVsAI = () => {
 
   // Cek apakah perlu skip recruitment (maks 5 kartu termasuk king)
   const checkSkipRecruitment = () => {
-    // Hitung karakter recruited (exclude King dan Ourson) — Arena logic keeps maxRecruited = 4
     const recruitedCount = placedCards.filter(
       (p) => p.owner === turn && !p.isKing && !p.isOurson
     ).length;
 
-    // Max recruited per player (tidak termasuk king) = 4 -> total di papan termasuk king = 5
     const maxRecruited = 4;
 
     if (recruitedCount >= maxRecruited) {
-      // Auto skip recruitment dan ganti turn
       setTimeout(() => {
         handleEndTurn();
       }, 500);
     } else {
-      // Set recruitment count khusus untuk pemain kedua di turn pertama
       if (
         turn !== firstTurn &&
         !secondPlayerUsedBonus &&
@@ -1373,373 +1352,44 @@ const ArenaVsAI = () => {
     setAiBusy(false);
   };
 
-  const aiActionPhase = () => {
-    // Find enemy characters that haven't acted (include king)
-    const enemies = placedCards.filter(
-      (p) => p.owner === "enemy" && !characterActions[p.cardData.type]
-    );
-
-    if (enemies.length === 0) {
-      // No enemies to act -> go to recruitment
-      setCurrentPhase("recruitment");
-      // Ensure recruitmentCount / second-player bonus is applied
-      checkSkipRecruitment();
-      aiThinking.current = false;
-      setAiBusy(false);
-      return;
-    }
-
-    // Choose a random available enemy to act (including king) to vary behavior
-    const enemy = enemies[Math.floor(Math.random() * enemies.length)];
-
-    // Compute valid moves depending on character type
-    let validMoves = [];
-    const occupiedPositions = new Set(placedCards.map((p) => p.positionId));
-
-    try {
-      switch (enemy.cardData.type) {
-        case "Cavalier":
-          validMoves = SkillManager.getCavalierValidMoves(
-            enemy.positionId,
-            placedCards,
-            SkillConstants.BOARD_CONFIG
-          );
-          break;
-        case "Acrobate":
-          // Acrobate moves like normal (adjacent) during action phase; jump is an active ability
-          validMoves = SkillManager.getAdjacentPositions(
-            enemy.positionId,
-            SkillConstants.BOARD_CONFIG
-          ).filter((pos) => !occupiedPositions.has(pos));
-          break;
-        case "Rodeuse":
-          validMoves = SkillManager.getRodeuseValidMoves(
-            enemy.positionId,
-            placedCards,
-            "enemy",
-            SkillConstants.BOARD_CONFIG
-          );
-          break;
-        default:
-          // Default: adjacent empty positions
-          validMoves = SkillManager.getAdjacentPositions(
-            enemy.positionId,
-            SkillConstants.BOARD_CONFIG
-          ).filter((pos) => !occupiedPositions.has(pos));
-          break;
-      }
-    } catch (err) {
-      validMoves = [];
-    }
-
-    // If enemy is king, allow leader moves (1-step adjacent or Vizir handled separately)
-    if (enemy.isKing) {
-      try {
-        validMoves = getLeaderMoves(enemy, placedCards);
-      } catch (e) {
-        // fallback to adjacent
-        validMoves = SkillManager.getAdjacentPositions(
-          enemy.positionId,
-          SkillConstants.BOARD_CONFIG
-        ).filter((pos) => !occupiedPositions.has(pos));
-      }
-    }
-
-    // If no valid moves, mark as acted and continue
-    if (!validMoves || validMoves.length === 0) {
-      setCharacterActions((prev) => ({ ...prev, [enemy.cardData.type]: true }));
-      aiThinking.current = false;
-      setTimeout(() => setAiBusy(false), 200);
-      return;
-    }
-
-    // Choose move using an epsilon-greedy approach: usually pick the aggressive best move,
-    // sometimes pick a random valid move to avoid deterministic behavior.
-    const playerPositions = placedCards
-      .filter((p) => p.owner === "player")
-      .map((p) => p.positionId);
-
-    // BFS shortest path distance treating occupied positions as walls (except target)
-    const getPathDistance = (start, target, placedCardsList) => {
-      const occupied = new Set(placedCardsList.map((p) => p.positionId));
-      const queue = [[start, 0]];
-      const seen = new Set([start]);
-      while (queue.length > 0) {
-        const [pos, dist] = queue.shift();
-        if (pos === target) return dist;
-        const neighbors =
-          SkillManager.getAdjacentPositions(pos, SkillConstants.BOARD_CONFIG) ||
-          [];
-        for (const n of neighbors) {
-          if (seen.has(n)) continue;
-          // allow stepping onto target even if occupied (capture), otherwise neighbor must be empty
-          if (n !== target && occupied.has(n)) continue;
-          seen.add(n);
-          queue.push([n, dist + 1]);
-        }
-      }
-      return Infinity;
-    };
-
-    const evaluateMove = (move) => {
-      // lower is better
-      let base = 0;
-      if (playerPositions.length === 0) base = 0;
-      else {
-        const dists = playerPositions.map((pp) =>
-          getPathDistance(move, pp, placedCards)
-        );
-        base = Math.min(...dists);
-      }
-
-      // simulate the placement after move
-      const simulated = placedCards.map((p) =>
-        p.positionId === enemy.positionId ? { ...p, positionId: move } : p
-      );
-
-      // big bonus if this move enables immediate capture of player's king
-      let kingCaptureBonus = 0;
-      const playerKing = simulated.find(
-        (p) => p.owner === "player" && p.isKing
-      );
-      if (playerKing) {
-        try {
-          if (
-            SkillHandlers.checkAssassinCapture &&
-            SkillHandlers.checkAssassinCapture(
-              playerKing.positionId,
-              simulated,
-              "enemy",
-              SkillConstants.BOARD_CONFIG
-            )
-          )
-            kingCaptureBonus = 1000;
-          if (
-            SkillHandlers.checkArcherCapture &&
-            SkillHandlers.checkArcherCapture(
-              playerKing.positionId,
-              simulated,
-              "enemy",
-              SkillConstants.BOARD_CONFIG
-            )
-          )
-            kingCaptureBonus = 1000;
-          if (
-            SkillHandlers.checkNormalCapture &&
-            SkillHandlers.checkNormalCapture(
-              playerKing.positionId,
-              simulated,
-              "enemy",
-              SkillConstants.BOARD_CONFIG
-            )
-          )
-            kingCaptureBonus = 1000;
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      // vulnerability penalty: how many player pieces adjacent to the moved position
-      const vulnerability = placedCards.filter(
-        (p) =>
-          p.owner === "player" &&
-          SkillManager.isAdjacent(
-            p.positionId,
-            move,
-            SkillConstants.BOARD_CONFIG
-          )
-      ).length;
-
-      const score = base - kingCaptureBonus + vulnerability * 3; // lower is better
-      return score;
-    };
-
-    // pick best according to evaluation (lower score preferred)
-    let best = validMoves[0];
-    let bestScore = evaluateMove(best);
-    for (const m of validMoves) {
-      const s = evaluateMove(m);
-      if (s < bestScore) {
-        best = m;
-        bestScore = s;
-      }
-    }
-
-    // epsilon-greedy: usually pick best, sometimes random to keep variety
-    const pickBestProb = 0.75;
-    const chosenMove =
-      Math.random() < pickBestProb
-        ? best
-        : validMoves[Math.floor(Math.random() * validMoves.length)];
-
-    // Show selection + highlights first (mimic player UX)
-    setSelectedCharacter(enemy);
-    setValidMovePositions(validMoves);
-
-    setTimeout(() => {
-      const newPlaced = placedCards.map((p) =>
-        p.positionId === enemy.positionId ? { ...p, positionId: chosenMove } : p
-      );
-      setPlacedCards(newPlaced);
-      setCharacterActions((prev) => ({ ...prev, [enemy.cardData.type]: true }));
-      // clear selection/highlight
-      setSelectedCharacter(null);
-      setValidMovePositions([]);
-      // allow next AI step after short delay
-      aiThinking.current = false;
-      setAiBusy(false);
-    }, 700);
-  };
-
-  const aiRecruitmentPhase = () => {
-    // simple recruitment: pick a random available card and an empty recruitment space
-    // Enforce max 5 per side (including king): if enemy already has 4 recruited (excluding king/ourson), skip recruitment
-    const enemyRecruitedCount = placedCards.filter(
-      (p) => p.owner === "enemy" && !p.isKing && !p.isOurson
-    ).length;
-    const maxRecruited = 4;
-    if (enemyRecruitedCount >= maxRecruited) {
-      handleEndTurnForAI();
-      return;
-    }
-    if (availableCards.length === 0) {
-      handleEndTurnForAI();
-      return;
-    }
-
-    // choose random card
-    const cardToRecruit =
-      availableCards[Math.floor(Math.random() * availableCards.length)];
-    const recruitmentSpaces = SkillConstants.RECRUITMENT_SPACES["enemy"] || [];
-    const emptySpaces = recruitmentSpaces.filter(
-      (pos) => !placedCards.find((p) => p.positionId === pos)
-    );
-
-    if (emptySpaces.length === 0) {
-      handleEndTurnForAI();
-      return;
-    }
-
-    // choose among top candidates near player's pieces (prefer aggressive placement), but randomize
-    const playerPositions = placedCards
-      .filter((p) => p.owner === "player")
-      .map((p) => p.positionId);
-    const scorePos = (p) => {
-      if (playerPositions.length === 0) return 0;
-      const dists = playerPositions.map((pp) =>
-        SkillManager.getDistance(p, pp)
-      );
-      return Math.min(...dists);
-    };
-    const sorted = [...emptySpaces].sort((a, b) => scorePos(a) - scorePos(b));
-    const topN = sorted.slice(0, Math.min(2, sorted.length));
-    const pos = topN[Math.floor(Math.random() * topN.length)];
-    const characterImage = `/Assets/Pions_personnages/${
-      enemyColor === "white" ? "Blanc" : "Noir"
-    }/Leaders_BGA_${enemyColor === "white" ? "white" : "black"}_${
-      cardToRecruit.type
-    }.png`;
-
-    // If VieilOurs, place Ourson immediately for AI
-    if (cardToRecruit.type === "VieilOurs") {
-      const oursonImage = `/Assets/Pions_personnages/${
-        enemyColor === "white" ? "Blanc" : "Noir"
-      }/Leaders_BGA_${enemyColor === "white" ? "white" : "black"}_Ourson.png`;
-      const newPlacedWithOurson = [
-        ...placedCards,
-        {
-          positionId: pos,
-          cardImage: oursonImage,
-          cardData: { type: "Ourson" },
-          owner: "enemy",
-          isKing: false,
-          isOurson: true,
-        },
-      ];
-      const newAvailable = availableCards.filter(
-        (av) => av.type !== cardToRecruit.type
-      );
-      let finalAvailable = newAvailable;
-      let finalDeck = [...deck];
-      if (deck.length > 0) {
-        finalAvailable = [...finalAvailable, deck[0]];
-        finalDeck = deck.slice(1);
-      }
-      finalAvailable = finalAvailable.sort(() => Math.random() - 0.5);
-
-      setPlacedCards(newPlacedWithOurson);
-      setAvailableCards(finalAvailable);
-      setDeck(finalDeck);
-
-      if (turn !== firstTurn && recruitmentCount > 1) {
-        setRecruitmentCount((prev) => prev - 1);
-        setRecruitmentPhase({
-          selectingCard: true,
-          selectedRecruitmentCard: null,
-          selectingPosition: false,
-        });
-        // allow AI to continue recruitment loop
-        aiThinking.current = false;
-      } else {
-        setTimeout(() => handleEndTurnForAI(), 600);
-      }
-
-      return;
-    }
-
-    const newPlaced = [
-      ...placedCards,
-      {
-        positionId: pos,
-        cardImage: characterImage,
-        cardData: cardToRecruit,
-        owner: "enemy",
-        isKing: false,
-      },
-    ];
-    const newAvailable = availableCards.filter(
-      (av) => av.type !== cardToRecruit.type
-    );
-    let finalAvailable = newAvailable;
-    let finalDeck = [...deck];
-    if (deck.length > 0) {
-      finalAvailable = [...finalAvailable, deck[0]];
-      finalDeck = deck.slice(1);
-    }
-    finalAvailable = finalAvailable.sort(() => Math.random() - 0.5);
-
-    setPlacedCards(newPlaced);
-    setAvailableCards(finalAvailable);
-    setDeck(finalDeck);
-
-    if (turn !== firstTurn && recruitmentCount > 1) {
-      setRecruitmentCount((prev) => prev - 1);
-      setRecruitmentPhase({
-        selectingCard: true,
-        selectedRecruitmentCard: null,
-        selectingPosition: false,
-      });
-      // allow AI to continue recruitment loop
-      aiThinking.current = false;
-    } else {
-      // End AI turn after recruitment
-      setTimeout(() => handleEndTurnForAI(), 600);
-    }
-  };
-
-  const runAITurn = () => {
-    if (currentPhase === "action") aiActionPhase();
-    else if (currentPhase === "recruitment") aiRecruitmentPhase();
-    else aiThinking.current = false;
-  };
+  // AI Logic removed locally and delegated to aiPlayer.js
 
   useEffect(() => {
     if (gamePhase !== "battle" || turn !== "enemy" || aiThinking.current)
       return;
-    aiThinking.current = true;
-    setAiBusy(true);
-    // small delay to simulate thinking
-    setTimeout(() => runAITurn(), 700);
+    
+    // Prepare parameter object untuk dikirim ke Module AI
+    const aiParams = {
+        placedCards,
+        characterActions,
+        setPlacedCards,
+        setCharacterActions,
+        setSelectedCharacter,
+        setValidMovePositions,
+        setCurrentPhase,
+        aiThinking,
+        setAiBusy,
+        checkSkipRecruitment,
+        availableCards,       
+        deck,                 
+        enemyColor,           
+        turn,                 
+        firstTurn,            
+        recruitmentCount,     
+        setAvailableCards,    
+        setDeck,              
+        setRecruitmentCount,  
+        setRecruitmentPhase,  
+        handleEndTurnForAI,   
+        currentPhase,
+        difficulty // <-- DIFFICULTY DIKIRIM KE SINI
+    };
+
+    // Panggil fungsi utama dari aiPlayer.js
+    if (!aiThinking.current) {
+        runAITurn(aiParams);
+    }
+    
   }, [
     gamePhase,
     turn,
@@ -1747,6 +1397,7 @@ const ArenaVsAI = () => {
     placedCards,
     availableCards,
     characterActions,
+    difficulty // Ditambahkan ke dependencies
   ]);
 
   return (
@@ -1817,6 +1468,17 @@ const ArenaVsAI = () => {
             Enemy:{" "}
             {enemyColor === "white" ? "⚪ White (Reine)" : "⚫ Black (Reine)"}
           </p>
+        )}
+        
+        {/* DISPLAY DIFFICULTY */}
+        {gamePhase === "battle" && (
+            <p className="text-sm text-gray-300 italic mt-1 border-t border-gray-600 pt-1">
+                AI Difficulty: <span className={
+                    difficulty === "Easy" ? "text-green-400" :
+                    difficulty === "Medium" ? "text-blue-400" :
+                    "text-red-400"
+                }>{difficulty}</span>
+            </p>
         )}
 
         {gamePhase === "battle" && currentPhase === "action" && (

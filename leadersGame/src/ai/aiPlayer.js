@@ -12,6 +12,31 @@ import * as SkillConstants from "../skill/skillConstants";
 // HELPER FUNCTIONS
 // ============================================
 
+// Konfigurasi AI berdasarkan tingkat kesulitan
+const getAiConfig = (difficulty) => {
+  switch (difficulty) {
+    case "Easy":
+      return {
+        depth: 1, // Hanya melihat 1 langkah ke depan (rakus/greedy)
+        randomness: 0.3, // 30% kemungkinan bergerak acak (blunder)
+        recruitmentRandom: true, // Rekrutmen asal-asalan
+      };
+    case "Medium":
+      return {
+        depth: 2, // Melihat 2 langkah (cukup pintar)
+        randomness: 0.05, // 5% kemungkinan error kecil
+        recruitmentRandom: false,
+      };
+    case "Hard":
+    default:
+      return {
+        depth: 4, // Melihat 4 langkah (sangat kuat/original)
+        randomness: 0, // Selalu pilih langkah terbaik
+        recruitmentRandom: false,
+      };
+  }
+};
+
 // Get adjacent positions helper
 const getAdjacentPositions = (positionId) => {
   return SkillManager.getAdjacentPositions(
@@ -1072,11 +1097,57 @@ export const aiActionPhase = (params) => {
     aiThinking,
     setAiBusy,
     checkSkipRecruitment,
+    difficulty = "Medium", // TERIMA PARAMETER DIFFICULTY
   } = params;
 
   // 1. Set state sibuk agar UI tahu AI mulai berpikir
   setAiBusy(true);
   aiThinking.current = true;
+
+  // Dapatkan konfigurasi berdasarkan tingkat kesulitan
+  const config = getAiConfig(difficulty);
+
+  // Helper untuk mengeksekusi langkah (baik dari Minimax maupun Random)
+  const executeFinalMove = (move, scoreVal = "Random") => {
+    if (move) {
+      const chosenChar = placedCards.find(
+        (c) => c.positionId === move.from
+      );
+      setSelectedCharacter(chosenChar);
+
+      // Highlight petak tujuan
+      setValidMovePositions([move.to]);
+
+      // Log untuk debugging
+      console.log(
+        `🤖 AI Move (${difficulty}): ${move.charType} from ${move.from} to ${move.to} (${move.moveType}) | Score: ${scoreVal}`
+      );
+
+      // Delay visual sebelum karakter benar-benar pindah
+      setTimeout(async () => {
+        // Eksekusi ability dengan benar
+        const newPlaced = await executeAbilityMove(
+          move,
+          placedCards,
+          setPlacedCards,
+          setSelectedCharacter,
+          setValidMovePositions
+        );
+
+        setPlacedCards(newPlaced);
+        setCharacterActions((prev) => ({ ...prev, [move.charType]: true }));
+
+        setSelectedCharacter(null);
+        setValidMovePositions([]);
+        aiThinking.current = false;
+        setAiBusy(false);
+      }, 800);
+    } else {
+      // Tidak ada best move, skip
+      aiThinking.current = false;
+      setAiBusy(false);
+    }
+  };
 
   // Gunakan setTimeout 100ms agar browser sempat merender state "AI Thinking..." di layar
   setTimeout(() => {
@@ -1110,15 +1181,24 @@ export const aiActionPhase = (params) => {
       return;
     }
 
+    // === EASY MODE: RANDOM MOVE LOGIC ===
+    // Jika difficulty Easy dan kena probabilitas randomness, pilih langkah acak
+    if (difficulty === "Easy" && Math.random() < config.randomness) {
+      console.log("🎲 AI (Easy): Decided to make a random move!");
+      const randomMove = allPossibleMoves[Math.floor(Math.random() * allPossibleMoves.length)];
+      executeFinalMove(randomMove, "Random (Blunder)");
+      return;
+    }
+
     let bestMove = null;
     let bestScore = -Infinity;
 
-    // 3. Perhitungan Minimax (Ini yang memakan waktu)
+    // 3. Perhitungan Minimax
     allPossibleMoves.forEach((move) => {
       const simulatedBoard = applyMove(placedCards, move);
       const score = minimax(
         simulatedBoard,
-        4,
+        config.depth, // Gunakan depth dari config (1, 2, atau 4)
         -Infinity,
         Infinity,
         false,
@@ -1131,45 +1211,9 @@ export const aiActionPhase = (params) => {
       }
     });
 
-    // 4. Setelah ketemu Best Move, baru jalankan visualisasi
-    if (bestMove) {
-      const chosenChar = placedCards.find(
-        (c) => c.positionId === bestMove.from
-      );
-      setSelectedCharacter(chosenChar);
+    // 4. Eksekusi Langkah Terbaik
+    executeFinalMove(bestMove, bestScore);
 
-      // Highlight petak tujuan
-      setValidMovePositions([bestMove.to]);
-
-      // Log untuk debugging
-      console.log(
-        `🤖 AI Move: ${bestMove.charType} from ${bestMove.from} to ${bestMove.to} (${bestMove.moveType}) | Score: ${bestScore}`
-      );
-
-      // Delay visual sebelum karakter benar-benar pindah
-      setTimeout(async () => {
-        // Eksekusi ability dengan benar
-        const newPlaced = await executeAbilityMove(
-          bestMove,
-          placedCards,
-          setPlacedCards,
-          setSelectedCharacter,
-          setValidMovePositions
-        );
-
-        setPlacedCards(newPlaced);
-        setCharacterActions((prev) => ({ ...prev, [bestMove.charType]: true }));
-
-        setSelectedCharacter(null);
-        setValidMovePositions([]);
-        aiThinking.current = false;
-        setAiBusy(false);
-      }, 800);
-    } else {
-      // Tidak ada best move, skip
-      aiThinking.current = false;
-      setAiBusy(false);
-    }
   }, 500); // Jeda awal 0.5 detik agar pemain merasa AI sedang "melihat papan"
 };
 
@@ -1286,6 +1330,8 @@ export const aiRecruitmentPhase = ({
   aiThinking,
   // Callbacks
   handleEndTurnForAI,
+  // Params
+  difficulty = "Medium", // Default difficulty
 }) => {
   // Enforce max 4 recruited (excluding king/ourson)
   const enemyRecruitedCount = placedCards.filter(
@@ -1313,42 +1359,51 @@ export const aiRecruitmentPhase = ({
     return;
   }
 
-  console.log("🤖 AI Recruitment: Evaluating options with Minimax...");
+  const config = getAiConfig(difficulty);
+  console.log(`🤖 AI Recruitment (${difficulty}): Evaluating options...`);
 
-  // === MINIMAX EVALUATION ===
-  // Evaluasi semua kombinasi kartu + posisi
+  // === STRATEGY SELECTION ===
   let bestCard = null;
   let bestPosition = null;
-  let bestScore = -Infinity;
 
-  availableCards.forEach((card) => {
-    emptySpaces.forEach((position) => {
-      const score = evaluateRecruitmentOption(
-        card,
-        position,
-        placedCards,
-        enemyColor
-      );
+  // Jika Easy Mode, pilih kartu dan posisi secara acak
+  if (config.recruitmentRandom) {
+    console.log("🎲 AI (Easy): Recruitment is random!");
+    bestCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+    bestPosition = emptySpaces[Math.floor(Math.random() * emptySpaces.length)];
+  } else {
+    // === MINIMAX EVALUATION (Medium/Hard) ===
+    let bestScore = -Infinity;
 
-      console.log(`  📊 ${card.type} at ${position}: Score = ${score}`);
+    availableCards.forEach((card) => {
+      emptySpaces.forEach((position) => {
+        const score = evaluateRecruitmentOption(
+          card,
+          position,
+          placedCards,
+          enemyColor
+        );
 
-      if (score > bestScore) {
-        bestScore = score;
-        bestCard = card;
-        bestPosition = position;
-      }
+        console.log(`  📊 ${card.type} at ${position}: Score = ${score}`);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestCard = card;
+          bestPosition = position;
+        }
+      });
     });
-  });
 
+    console.log(
+      `🤖 AI Recruiting: ${bestCard?.type} at ${bestPosition} (Minimax Score: ${bestScore})`
+    );
+  }
+
+  // Fallback jika null
   if (!bestCard || !bestPosition) {
-    // Fallback: pilih random jika tidak ada best
     bestCard = availableCards[0];
     bestPosition = emptySpaces[0];
   }
-
-  console.log(
-    `🤖 AI Recruiting: ${bestCard.type} at ${bestPosition} (Minimax Score: ${bestScore})`
-  );
 
   const characterImage = `/Assets/Pions_personnages/${
     enemyColor === "white" ? "Blanc" : "Noir"
@@ -1360,40 +1415,48 @@ export const aiRecruitmentPhase = ({
   if (bestCard.type === "VieilOurs") {
     const remainingSpaces = emptySpaces.filter((s) => s !== bestPosition);
     if (remainingSpaces.length > 0) {
-      // Pilih posisi Ourson terbaik dengan Minimax juga
-      let bestOursonPos = remainingSpaces[0];
-      let bestOursonScore = -Infinity;
+      let bestOursonPos;
 
-      remainingSpaces.forEach((oursonPos) => {
-        const oursonImage = `/Assets/Pions_personnages/${
-          enemyColor === "white" ? "Blanc" : "Noir"
-        }/Leaders_BGA_${enemyColor === "white" ? "white" : "black"}_Ourson.png`;
+      // Logic pemilihan posisi Ourson
+      if (config.recruitmentRandom) {
+         // Easy: Posisi Ourson random
+         bestOursonPos = remainingSpaces[Math.floor(Math.random() * remainingSpaces.length)];
+      } else {
+         // Medium/Hard: Posisi Ourson optimal dengan Minimax
+         let bestOursonScore = -Infinity;
+         bestOursonPos = remainingSpaces[0];
 
-        const simulatedBoard = [
-          ...placedCards,
-          {
-            positionId: bestPosition,
-            cardImage: characterImage,
-            cardData: bestCard,
-            owner: "enemy",
-            isKing: false,
-          },
-          {
-            positionId: oursonPos,
-            cardImage: oursonImage,
-            cardData: { type: "Ourson" },
-            owner: "enemy",
-            isKing: false,
-            isOurson: true,
-          },
-        ];
+         remainingSpaces.forEach((oursonPos) => {
+          const oursonImage = `/Assets/Pions_personnages/${
+            enemyColor === "white" ? "Blanc" : "Noir"
+          }/Leaders_BGA_${enemyColor === "white" ? "white" : "black"}_Ourson.png`;
 
-        const score = evaluateState(simulatedBoard, "enemy");
-        if (score > bestOursonScore) {
-          bestOursonScore = score;
-          bestOursonPos = oursonPos;
-        }
-      });
+          const simulatedBoard = [
+            ...placedCards,
+            {
+              positionId: bestPosition,
+              cardImage: characterImage,
+              cardData: bestCard,
+              owner: "enemy",
+              isKing: false,
+            },
+            {
+              positionId: oursonPos,
+              cardImage: oursonImage,
+              cardData: { type: "Ourson" },
+              owner: "enemy",
+              isKing: false,
+              isOurson: true,
+            },
+          ];
+
+          const score = evaluateState(simulatedBoard, "enemy");
+          if (score > bestOursonScore) {
+            bestOursonScore = score;
+            bestOursonPos = oursonPos;
+          }
+        });
+      }
 
       const oursonImage = `/Assets/Pions_personnages/${
         enemyColor === "white" ? "Blanc" : "Noir"
