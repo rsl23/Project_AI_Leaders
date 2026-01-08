@@ -3,7 +3,7 @@ import MuteButton from "./MuteButton";
 import CardDeck from "./CardDeck";
 import GameInfo from "./GameInfo";
 import GameBoard from "./GameBoard";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { characterInfo } from "../data/characterInfo";
 
 // Import skill modules
@@ -18,6 +18,10 @@ const Arena = ({ mode = "pvp" }) => {
   // mode: "pvp" atau "ai"
   const audioRef = useRef(null);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // === AI DIFFICULTY (from Menu navigation state) ===
+  const difficulty = location.state?.difficulty || "Hard";
 
   // === GAME OVER STATE ===
   const [gameOver, setGameOver] = useState(null); // { winner: "player" | "enemy", reason: string }
@@ -242,6 +246,12 @@ const Arena = ({ mode = "pvp" }) => {
       // Callbacks
       checkSkipRecruitment,
       handleEndTurnForAI,
+      // Callback ketika AI Leader bergerak (untuk trigger Nemesis player)
+      onAILeaderMove: (newCards) => {
+        checkNemesisMovement("enemy", newCards);
+      },
+      // AI Difficulty dari Menu
+      difficulty,
     });
   };
 
@@ -1910,6 +1920,23 @@ const Arena = ({ mode = "pvp" }) => {
               currentPhase === "action" ? "Action Phase" : "Recruitment Phase"
             }`}
         </p>
+        
+        {/* AI Difficulty Display */}
+        {mode === "ai" && (
+          <p className="text-sm mt-1">
+            🤖 AI Difficulty:{" "}
+            <span className={
+              difficulty === "Easy" ? "text-green-400" :
+              difficulty === "Medium" ? "text-blue-400" :
+              "text-red-400"
+            }>
+              {difficulty === "Easy" && "Easy (Apprentice)"}
+              {difficulty === "Medium" && "Medium (Knight)"}
+              {difficulty === "Hard" && "Hard (King)"}
+            </span>
+          </p>
+        )}
+        
         {firstTurn && (
           <p className="text-white text-sm mt-1">
             Player:{" "}
