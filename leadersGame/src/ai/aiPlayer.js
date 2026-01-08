@@ -825,6 +825,8 @@ const getOrderedMoves = (cards, currentTurn, aiOwner) => {
     // Prioritas 2: Utamakan unit berbahaya (Assassin/Archer)
     if (a.charType === "Assassin") scoreA += 50;
     if (b.charType === "Assassin") scoreB += 50;
+    if (a.charType === "Archer") scoreA += 45;
+    if (b.charType === "Archer") scoreB += 45;
 
     return scoreB - scoreA;
   });
