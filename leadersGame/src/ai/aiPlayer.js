@@ -100,14 +100,13 @@ export const aiChooseNemesisPosition = (
     return validPositions[0];
   }
 
-  console.log("🤖 AI Nemesis: Evaluating positions...");
+  console.log("AI Nemesis: Evaluating positions...");
 
   let bestPosition = validPositions[0];
   let bestScore = -Infinity;
 
   validPositions.forEach((pos) => {
     let score = 0;
-
     // 1. Prioritas utama: Jarak ke King lawan (semakin dekat semakin baik)
     const distToOpponentKing = SkillManager.getDistance(
       pos,
@@ -362,7 +361,7 @@ const evaluateState = (cards, aiOwner) => {
           const blocked = cards.find((x) => x.positionId === pos);
           if (
             blocked &&
-            ["Assassin", "Cavalier", "LanceGrappin", "Manipulator"].includes(
+            ["Cavalier", "LanceGrappin", "Manipulator", "Illusionist"].includes(
               blocked.cardData?.type
             )
           ) {
@@ -382,13 +381,14 @@ const evaluateState = (cards, aiOwner) => {
     }
 
     // G. Archer - Bonus posisi ideal (2 kotak dari King lawan, garis lurus)
+    // Archer bisa capture King dari distance 2 garis lurus TANPA bantuan ally!
     if (type === "Archer") {
       if (distToPlayerKing === 2 && isAI) {
         try {
           if (
             SkillManager.isStraightLine(card.positionId, playerKing.positionId)
           ) {
-            score += 600; // Posisi capture ideal
+            score += 4000; // POSISI CAPTURE! (hampir menang)
           }
         } catch (e) {
           /* ignore */
@@ -398,7 +398,7 @@ const evaluateState = (cards, aiOwner) => {
           if (
             SkillManager.isStraightLine(card.positionId, enemyKing.positionId)
           ) {
-            score -= 600;
+            score -= 4000; // BAHAYA! Player Archer bisa capture AI King!
           }
         } catch (e) {
           /* ignore */
@@ -409,9 +409,9 @@ const evaluateState = (cards, aiOwner) => {
     // H. Assassin - Bonus jika adjacent dengan King lawan
     if (type === "Assassin") {
       if (isAI && distToPlayerKing === 1) {
-        score += 800; // Sangat berbahaya!
+        score += 4000; // Sangat berbahaya!
       } else if (!isAI && distToEnemyKing === 1) {
-        score -= 800;
+        score -= 4000;
       }
     }
 
@@ -429,7 +429,6 @@ const evaluateState = (cards, aiOwner) => {
 
     // J. Rodeuse - Bonus fleksibilitas posisi
     if (type === "Rodeuse") {
-      // Rodeuse lebih berharga di tengah papan (lebih banyak opsi)
       try {
         const validMoves = SkillManager.getRodeuseValidMoves(
           card.positionId,
@@ -1111,9 +1110,7 @@ export const aiActionPhase = (params) => {
   // Helper untuk mengeksekusi langkah (baik dari Minimax maupun Random)
   const executeFinalMove = (move, scoreVal = "Random") => {
     if (move) {
-      const chosenChar = placedCards.find(
-        (c) => c.positionId === move.from
-      );
+      const chosenChar = placedCards.find((c) => c.positionId === move.from);
       setSelectedCharacter(chosenChar);
 
       // Highlight petak tujuan
@@ -1191,7 +1188,8 @@ export const aiActionPhase = (params) => {
     // Jika difficulty Easy dan kena probabilitas randomness, pilih langkah acak
     if (difficulty === "Easy" && Math.random() < config.randomness) {
       console.log("🎲 AI (Easy): Decided to make a random move!");
-      const randomMove = allPossibleMoves[Math.floor(Math.random() * allPossibleMoves.length)];
+      const randomMove =
+        allPossibleMoves[Math.floor(Math.random() * allPossibleMoves.length)];
       executeFinalMove(randomMove, "Random (Blunder)");
       return;
     }
@@ -1219,7 +1217,6 @@ export const aiActionPhase = (params) => {
 
     // 4. Eksekusi Langkah Terbaik
     executeFinalMove(bestMove, bestScore);
-
   }, 500); // Jeda awal 0.5 detik agar pemain merasa AI sedang "melihat papan"
 };
 
@@ -1375,7 +1372,8 @@ export const aiRecruitmentPhase = ({
   // Jika Easy Mode, pilih kartu dan posisi secara acak
   if (config.recruitmentRandom) {
     console.log("🎲 AI (Easy): Recruitment is random!");
-    bestCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+    bestCard =
+      availableCards[Math.floor(Math.random() * availableCards.length)];
     bestPosition = emptySpaces[Math.floor(Math.random() * emptySpaces.length)];
   } else {
     // === MINIMAX EVALUATION (Medium/Hard) ===
@@ -1425,17 +1423,20 @@ export const aiRecruitmentPhase = ({
 
       // Logic pemilihan posisi Ourson
       if (config.recruitmentRandom) {
-         // Easy: Posisi Ourson random
-         bestOursonPos = remainingSpaces[Math.floor(Math.random() * remainingSpaces.length)];
+        // Easy: Posisi Ourson random
+        bestOursonPos =
+          remainingSpaces[Math.floor(Math.random() * remainingSpaces.length)];
       } else {
-         // Medium/Hard: Posisi Ourson optimal dengan Minimax
-         let bestOursonScore = -Infinity;
-         bestOursonPos = remainingSpaces[0];
+        // Medium/Hard: Posisi Ourson optimal dengan Minimax
+        let bestOursonScore = -Infinity;
+        bestOursonPos = remainingSpaces[0];
 
-         remainingSpaces.forEach((oursonPos) => {
+        remainingSpaces.forEach((oursonPos) => {
           const oursonImage = `/Assets/Pions_personnages/${
             enemyColor === "white" ? "Blanc" : "Noir"
-          }/Leaders_BGA_${enemyColor === "white" ? "white" : "black"}_Ourson.png`;
+          }/Leaders_BGA_${
+            enemyColor === "white" ? "white" : "black"
+          }_Ourson.png`;
 
           const simulatedBoard = [
             ...placedCards,
